@@ -1,123 +1,153 @@
 # docs-wiki
 
-`docs-wiki` is a zero-config CLI that scans the project in your current working directory and generates a Markdown wiki from source code structure using Tree-sitter.
+`docs-wiki` is a CLI that scans a codebase and generates a VitePress-ready internal wiki from source code.
 
-The generated Markdown is now VitePress-friendly by default:
+The goal is not only code reference. The generated output tries to answer four questions:
 
-- every page includes VitePress frontmatter
-- generated pages disable edit links and last-updated timestamps by default
-- file pages emit deep outlines for symbol-heavy pages
-- `docs-wiki/vitepress.schema.json` describes the custom `docsWiki` frontmatter payload
-- `docs-wiki/.vitepress/config.mjs` enables VitePress local search out of the box
-- `docs-wiki/search-index.json` provides a portable local search index for custom UIs
-- `docs-wiki/public/docs-wiki.css` provides generated visual theming for the wiki pages
-- `docs-wiki/.vitepress/theme/index.mjs` renders Mermaid diagrams in the generated VitePress site
-- the CLI can run bundled VitePress commands directly through `serve`, `build-site`, and `preview`
-- the generated `index.md` uses VitePress `layout: home` with hero and feature cards
-- project output now includes inferred Basic Design, Detail Design, and flow-analysis pages
-- local import dependencies are resolved into file/module interaction graphs so flow ordering is based on actual code edges when possible
+- What modules exist in this project?
+- What business capability does each module appear to implement?
+- What request and business flows exist in the code?
+- What HTTP API contracts can be inferred from route handlers?
 
-## Usage
+`docs-wiki` runs against the project in the current working directory by default and writes output into `./docs-wiki` inside that same project.
+
+## What It Generates
+
+The generated site is VitePress-first and includes:
+
+- project overview pages
+- module and workspace indexes
+- one page per source file
+- Basic Design and Detail Design pages
+- inferred business/request flows with Mermaid diagrams
+- inferred API contract pages with request/response summaries
+- endpoint-level flow and sequence diagrams
+- local VitePress search config
+- a portable `search-index.json`
+- a machine-readable `manifest.json`
+
+## Quick Start
+
+Run against the current project:
 
 ```bash
 npx docs-wiki
 ```
 
-That command scans `process.cwd()` and writes the generated docs to `./docs-wiki` inside the same project.
+Generate docs with AI enrichment:
 
-Start a local VitePress dev server for the generated docs:
+```bash
+npx docs-wiki --ai
+```
+
+Serve the generated wiki locally with VitePress:
 
 ```bash
 npx docs-wiki serve
 ```
 
-Build the generated docs as a production VitePress site:
+Build a production site:
 
 ```bash
 npx docs-wiki build-site
 ```
 
-Preview the production build locally:
+Preview the production build:
 
 ```bash
 npx docs-wiki preview
 ```
 
-Scaffold deployment config:
+Run against another directory:
+
+```bash
+npx docs-wiki ../my-project --out-dir wiki
+```
+
+## Requirements
+
+- Node.js `>=18`
+
+If AI is enabled, use one of these:
+
+- OpenAI via `OPENAI_API_KEY`
+- local Ollama server at `http://127.0.0.1:11434/v1`
+
+## Main Commands
+
+Generate docs:
+
+```bash
+npx docs-wiki
+npx docs-wiki ./path/to/project
+npx docs-wiki --root ./path/to/project --out-dir docs-wiki
+```
+
+Serve the generated VitePress site:
+
+```bash
+npx docs-wiki serve
+npx docs-wiki serve --port 4173 --open
+```
+
+Build and preview:
+
+```bash
+npx docs-wiki build-site --base /internal-docs/
+npx docs-wiki preview --port 4174
+```
+
+Deploy scaffold:
 
 ```bash
 npx docs-wiki init-deploy --target github-pages
 npx docs-wiki init-deploy --target vercel
 ```
 
-Generate richer docs with AI summaries:
+Watch mode:
 
 ```bash
-OPENAI_API_KEY=... npx docs-wiki --ai
+npx docs-wiki --watch
 ```
 
-If you do not have an API key, `docs-wiki` will try a local Ollama server first:
+## CLI Options
 
-```bash
-npx docs-wiki --ai
-```
+The CLI currently supports:
 
-By default it probes `http://127.0.0.1:11434/v1` and uses `llama3.2`.
+- `--root <path>`
+- `--config <path>`
+- `--out-dir <path>`
+- `--port <n>`
+- `--open [path]`
+- `--base <path>`
+- `--strict-port`
+- `--force`
+- `--target <github-pages|vercel>`
+- `--deploy-branch <name>`
+- `--overwrite`
+- `--template <basic|detailed|api-first>`
+- `--theme-preset <clean|warm|enterprise>`
+- `--flow-diagram <flow|sequence|both|none>`
+- `--max-files <n>`
+- `--ai`
+- `--no-ai`
+- `--ai-provider <auto|ollama|openai>`
+- `--ai-model <name>`
+- `--ollama-model-strategy <exact|family|first-available>`
+- `--openai-api-key <key>`
+- `--watch`
+- `--no-watch`
+- `--incremental`
+- `--no-incremental`
+- `--verbose`
+- `--no-progress`
+- `--help`
 
-If that exact Ollama tag is not installed, `docs-wiki` will try to pick the closest available family variant such as `llama3.2:1b`.
+Default flow diagram mode is `flow`.
 
-You can also point it at another directory:
+## Configuration
 
-```bash
-npx docs-wiki ../my-project --out-dir wiki
-```
-
-## Supported Languages
-
-**Tree-sitter (symbols + structure):**
-
-- JavaScript: `.js`, `.cjs`, `.mjs`, `.jsx`
-- TypeScript: `.ts`, `.tsx`
-- Python: `.py`
-- Go: `.go`
-- Rust: `.rs`
-
-**Plain-text index (one page per file, full source in a fenced block — no AST symbols yet):**
-
-- **Dart / Flutter:** `.dart` (app and package code; pair with `.yaml` / `.yml` for `pubspec.yaml`)
-- Web UI: `.vue`, `.svelte`, `.css`, `.scss`, `.less`
-- Config / data: `.json`, `.yaml`, `.yml`
-- Mobile / JVM-style sources (indexed as text): `.swift`, `.kt`, `.kts`, `.java`
-
-Flutter/Dart repos also skip common generated paths (`.dart_tool/`, `ios/Pods/`, Android `.gradle` caches) during discovery.
-
-> A native Dart Tree-sitter grammar is not wired in yet (ABI mismatch with the current `tree-sitter` runtime). When that is resolved, `.dart` can move to full symbol extraction like TypeScript.
-
-## Output
-
-By default the CLI writes:
-
-- `docs-wiki/SUMMARY.md`: top-level wiki navigation
-- `docs-wiki/index.md`: project overview, language breakdown, key modules
-- `docs-wiki/design/index.md`: design-doc landing page
-- `docs-wiki/design/basic-design.md`: system intent, actors, capability map, context diagram
-- `docs-wiki/design/detail-design.md`: runtime structure, module responsibilities, implementation view
-- `docs-wiki/design/api-contracts.md`: inferred HTTP endpoints with request and response contracts
-- `docs-wiki/design/flows.md`: inferred business/request flows with Mermaid diagrams based on the configured diagram mode
-- `docs-wiki/.vitepress/config.mjs`: VitePress config scaffold with `search.provider = 'local'`
-- `docs-wiki/vitepress.schema.json`: JSON Schema for the generated VitePress frontmatter
-- `docs-wiki/search-index.json`: local JSON search index for overview/module/workspace/file pages
-- `docs-wiki/public/docs-wiki.css`: generated CSS theme assets scoped to `docs-wiki` pages
-- `docs-wiki/modules/index.md`: module directory index
-- `docs-wiki/modules/**/*.md`: one page per module/directory
-- `docs-wiki/workspaces/index.md`: workspace or package index for monorepos
-- `docs-wiki/workspaces/**/*.md`: one page per detected workspace/package boundary
-- `docs-wiki/files/**/*.md`: one page per source file with extracted symbols and code snippets
-- `docs-wiki/manifest.json`: machine-readable scan result and incremental cache
-
-## Config File
-
-Place a `docs-wiki.config.json` file in the project root, or pass `--config /path/to/docs-wiki.config.json`.
+Place `docs-wiki.config.json` in the target project root, or pass `--config /path/to/docs-wiki.config.json`.
 
 Example:
 
@@ -159,247 +189,342 @@ Supported config keys:
 - `incremental`
 - `watch`
 - `template`
-- `themePreset` (`clean`, `warm`, `enterprise`)
-- `output.flowDiagram` (`flow`, `sequence`, `both`, `none`)
+- `themePreset`
+- `output.flowDiagram`
 - `output.includeCodeBlocks`
 - `output.includeAiSections`
 - `output.includeUsageNotes`
 - `output.highlightPublicApi`
 - `ai.enabled`
-- `ai.provider` (`auto`, `ollama`, `openai`)
+- `ai.provider`
 - `ai.model`
+- `ai.baseURL`
 - `ai.ollamaBaseURL`
 - `ai.ollamaModel`
-- `ai.ollamaModelStrategy` (`exact`, `family`, `first-available`)
+- `ai.ollamaModelStrategy`
 - `ai.reasoningEffort`
-- `ai.baseURL`
 - `ai.filePrompt`
 - `ai.modulePrompt`
 - `ai.projectPrompt`
 
-Templates:
+## Templates
 
-- `basic`: structural docs only, no AI sections or code blocks
-- `detailed`: richer pages with AI sections, usage notes, and public API highlighting
-- `api-first`: emphasize exported/public symbols without embedding code blocks
+- `basic`: structural docs, no AI sections, no embedded code blocks
+- `detailed`: richer output with AI sections, usage notes, and public API emphasis
+- `api-first`: focus on exported/public symbols and endpoint/API surfaces
 
-Even when AI is disabled, `docs-wiki` still emits heuristic design pages and flow diagrams from folder names, symbol names, imports, and module structure. When AI is enabled, those design pages get materially better because file summaries contribute higher-level business hints.
+## Theme Presets
 
-API contract extraction:
+- `clean`: teal/orange default
+- `warm`: orange/amber emphasis
+- `enterprise`: blue/teal conservative theme
 
-- Express-style handlers such as `router.post("/login", loginHandler)`
-- file-based Next.js route handlers such as `app/api/**/route.ts` and `pages/api/**`
-- endpoints grouped by dominant domain such as `auth`, `order`, or `payment`
-- inferred request fields from `req.body`, `req.query`, `req.params`, `request.json()`, headers, and query access
-- inferred response shapes from `res.status(...).json(...)`, `res.json(...)`, and `NextResponse.json(...)`
-- request schema refs from `zod` parsers like `loginSchema.parse(req.body)` or `loginSchema.parse(body)`
-- request/response DTO refs from local interfaces and type aliases such as `LoginRequest` or `NextApiResponse<LoginResponse>`
-- endpoint-level sequence diagrams built from the endpoint entry file plus local call/dependency handoffs
+## Diagram Modes
 
-Diagram modes:
-
-- `flow`: default, render only flowcharts
-- `sequence`: render only sequence diagrams
+- `flow`: render flowcharts only
+- `sequence`: render sequence diagrams only
 - `both`: render both flowcharts and sequence diagrams
-- `none`: omit Mermaid flow diagrams from flow sections
+- `none`: omit flow diagrams in flow sections
 
-The current design layer uses two sources of evidence:
+This setting applies to inferred flow sections and endpoint-level API flow rendering.
 
-- structural heuristics: folder names, symbol names, exported APIs, detected roles such as route/service/repository
-- graph evidence: local imports, lightweight imported-symbol call detection, and module-to-module dependency aggregation
+## AI Providers
 
-Theme presets:
+When `--ai` is enabled, provider resolution works like this:
 
-- `clean`: balanced teal/orange default
-- `warm`: orange/amber gradient with warmer surfaces
-- `enterprise`: blue/teal palette with more conservative contrast
+1. If `--ai-provider ollama` or `ai.provider = "ollama"`, use Ollama.
+2. If provider is `auto` and no OpenAI key is present, try Ollama first.
+3. Otherwise, use OpenAI when `OPENAI_API_KEY` is available.
+
+OpenAI:
+
+- uses the OpenAI SDK already included in the package
+- supports `--ai-model`
+- supports `OPENAI_BASE_URL` if needed
+
+Ollama:
+
+- uses the OpenAI-compatible API surface
+- defaults to `http://127.0.0.1:11434/v1`
+- defaults to model family `llama3.2`
+- can auto-pick a nearest installed variant such as `llama3.2:1b`
+- applies a repair/normalization pass for imperfect JSON outputs
+
+Environment variables:
+
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `DOCS_WIKI_OPENAI_MODEL`
+- `DOCS_WIKI_REASONING_EFFORT`
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL`
+- `OLLAMA_MODEL_STRATEGY`
+- `OLLAMA_API_KEY`
+
+## Output Structure
+
+By default the CLI writes:
+
+- `docs-wiki/SUMMARY.md`
+- `docs-wiki/index.md`
+- `docs-wiki/design/index.md`
+- `docs-wiki/design/basic-design.md`
+- `docs-wiki/design/detail-design.md`
+- `docs-wiki/design/api-contracts.md`
+- `docs-wiki/design/flows.md`
+- `docs-wiki/modules/index.md`
+- `docs-wiki/modules/**/*.md`
+- `docs-wiki/workspaces/index.md`
+- `docs-wiki/workspaces/**/*.md`
+- `docs-wiki/files/**/*.md`
+- `docs-wiki/.vitepress/config.mjs`
+- `docs-wiki/.vitepress/theme/index.mjs`
+- `docs-wiki/public/docs-wiki.css`
+- `docs-wiki/search-index.json`
+- `docs-wiki/vitepress.schema.json`
+- `docs-wiki/manifest.json`
+
+## What The Tool Infers
+
+### 1. Source Structure
+
+From Tree-sitter and text indexing, `docs-wiki` extracts:
+
+- files
+- symbols
+- modules/directories
+- workspaces/packages
+- local imports
+- lightweight file-to-file interaction edges
+
+### 2. Design Views
+
+The design layer builds:
+
+- `Basic Design`: actors, top capabilities, context-level view
+- `Detail Design`: runtime shape, module responsibilities, interaction graph
+- `Flow Catalog`: business/request flows inferred from structure and local edges
+
+The design model uses two kinds of evidence:
+
+- structural heuristics: names, folders, exported symbols, common role patterns like route/service/repository
+- graph evidence: local imports and lightweight imported-symbol call detection
+
+### 3. API Contracts
+
+The API layer currently infers:
+
+- Express-style handlers like `router.post("/login", loginHandler)`
+- chained route declarations like `router.route("/x").post(handler)`
+- Next.js file-based routes in `app/api/**/route.ts`
+- Next.js `pages/api/**`
+
+It extracts, when possible:
+
+- HTTP method
+- path
+- handler name
+- request body keys
+- query keys
+- path params
+- headers
+- response status codes
+- top-level response keys
+- endpoint grouping by dominant domain such as `auth`, `orders`, `payment`
+
+### 4. Schema References
+
+The contract layer also tries to resolve request and response schemas from code.
+
+Currently supported inference includes:
+
+- Zod parsers such as `loginSchema.parse(req.body)`
+- Zod parsers such as `loginSchema.parse(body)` after `body = await request.json()`
+- `safeParse(...)`
+- local TypeScript interfaces and type aliases used as DTO-like contracts
+- response generics such as `NextApiResponse<LoginResponse>`
+- `NextResponse.json<LoginResponse>(...)`
+
+When a referenced schema or DTO can be resolved locally, the generated docs include the schema name and top-level field names.
+
+### 5. Endpoint-Level Flows
+
+For each inferred endpoint, `docs-wiki` builds an endpoint-specific flow using:
+
+- the endpoint entry file
+- local call/dependency handoffs
+- inferred data-store and integration signals
+
+That output appears in API docs as:
+
+- endpoint steps
+- endpoint flow diagram
+- endpoint sequence diagram
+
+## Supported Languages
+
+### Full symbol extraction via Tree-sitter
+
+- JavaScript: `.js`, `.cjs`, `.mjs`, `.jsx`
+- TypeScript: `.ts`, `.tsx`
+- Python: `.py`
+- Go: `.go`
+- Rust: `.rs`
+
+### Plain-text indexed files
+
+These are still documented as files, but without full AST-based symbol extraction:
+
+- Dart / Flutter: `.dart`
+- Vue / Svelte / styles: `.vue`, `.svelte`, `.css`, `.scss`, `.less`
+- config/data: `.json`, `.yaml`, `.yml`
+- mobile/JVM text-indexed files: `.swift`, `.kt`, `.kts`, `.java`
+
+Common generated directories are ignored automatically, including build caches, `node_modules`, `.next`, `.dart_tool`, iOS Pods, Android Gradle outputs, and the generated `docs-wiki/` folder itself.
+
+## VitePress Integration
+
+Generated docs are VitePress-ready out of the box.
+
+Included pieces:
+
+- `docs-wiki/.vitepress/config.mjs`
+- `docs-wiki/.vitepress/theme/index.mjs`
+- `docs-wiki/public/docs-wiki.css`
+- VitePress frontmatter on every page
+- Mermaid rendering support
+- local search config
+- generated home page at `index.md`
+
+Useful commands:
+
+```bash
+npx docs-wiki serve --port 4173 --open
+npx docs-wiki build-site --base /internal-docs/
+npx docs-wiki preview --port 4174
+```
 
 ## Incremental Mode
 
-Incremental mode is enabled by default. On repeated runs, `docs-wiki`:
+Incremental mode is enabled by default.
 
-- reuses parse results for unchanged source files
-- reuses AI summaries for unchanged files when AI settings match
-- removes pages for deleted files/modules/workspaces
-- rewrites only changed file/module/workspace pages when render settings are compatible
+On repeated runs, `docs-wiki` attempts to:
 
-CLI flags:
+- reuse parse results for unchanged files
+- reuse AI summaries when AI settings still match
+- remove pages for deleted files/modules/workspaces
+- rewrite only changed pages when possible
+
+Disable it if you want a full clean pass:
 
 ```bash
-npx docs-wiki --incremental
 npx docs-wiki --no-incremental
 ```
 
 ## Watch Mode
 
-To keep the wiki updated while you work:
+Use watch mode during development inside a target project:
 
 ```bash
 npx docs-wiki --watch
 ```
 
-Watch mode ignores common generated directories and the output directory itself, then reruns the incremental pipeline on changes.
-
-## AI Summaries
-
-When `--ai` is enabled, `docs-wiki` resolves providers in this order:
-
-1. If `ai.provider` or `--ai-provider` is `ollama`, use Ollama.
-2. If provider is `auto` and there is no OpenAI API key, try Ollama first.
-3. Otherwise use OpenAI when `OPENAI_API_KEY` is available.
-
-Ollama uses the OpenAI-compatible chat completions endpoint in JSON mode. OpenAI uses the Responses API with structured outputs.
-
-For local Ollama models, `docs-wiki` also applies a normalization pass so slightly malformed JSON responses can still be coerced into the expected docs schema when possible.
-
-Generated AI content includes:
-
-- file-level summaries
-- module-level business capability, basic-design, and detail-design summaries
-- project-level overview and key modules
-- improved business-capability wording on module/design pages when the underlying file summaries provide enough evidence
-- file responsibilities and usage notes
-- symbol-level summaries
-- a project-level overview with key modules
-
-Flags:
-
-```bash
-npx docs-wiki --ai --ai-provider ollama
-npx docs-wiki --ai --ollama-model-strategy family
-npx docs-wiki --ai --ai-provider openai
-npx docs-wiki --ai --ai-model gpt-5.4-mini
-npx docs-wiki --ai --openai-api-key sk-...
-```
-
-Environment variables:
-
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL` (optional)
-- `DOCS_WIKI_OPENAI_MODEL` (optional)
-- `DOCS_WIKI_REASONING_EFFORT` (optional, default `none`)
-- `OLLAMA_BASE_URL` (optional, default `http://127.0.0.1:11434/v1`)
-- `OLLAMA_MODEL` (optional, default `llama3.2`)
-- `OLLAMA_MODEL_STRATEGY` (optional, default `family`)
-- `OLLAMA_API_KEY` (optional, default `ollama`)
-
-## VitePress Integration
-
-Each generated page includes frontmatter similar to:
-
-```yaml
----
-title: "src/index.ts"
-description: "TypeScript source file with 3 symbols."
-layout: "doc"
-outline: "deep"
-editLink: false
-lastUpdated: false
-pageClass: "docs-wiki docs-wiki--file"
-docsWiki:
-  schemaVersion: "1.0.0"
-  kind: "file"
-  project: "my-app"
-  template: "detailed"
-  generatedAt: "2026-04-07T16:00:00.000Z"
-  relativePath: "src/index.ts"
-  module: "src"
-  workspace: ""
-  language: "TypeScript"
-  symbolCount: 3
----
-```
-
-The custom `docsWiki` object is intended for VitePress theme extensions and page-level UI logic through `$frontmatter` or `useData()`.
-
-The generated landing page uses the official VitePress home layout:
-
-```yaml
----
-layout: home
-sidebar: false
-aside: false
-hero:
-  name: "my-app"
-  text: "Internal docs wiki"
-features:
-  - title: "Structure Map"
-    details: "Module and workspace indexes"
----
-```
-
-Generated `docs-wiki/.vitepress/config.mjs` enables VitePress local search using the official default theme search provider:
-
-```js
-export default {
-  transformPageData(pageData, { siteConfig }) {
-    pageData.frontmatter.head ??= []
-    pageData.frontmatter.head.push([
-      'link',
-      { rel: 'stylesheet', href: `${siteConfig.site.base}docs-wiki.css` }
-    ])
-  },
-  themeConfig: {
-    search: {
-      provider: 'local'
-    }
-  }
-}
-```
-
-`docs-wiki/search-index.json` is separate from VitePress's own build-time index. It is intended for custom search UIs, external ingestion, or debugging the searchable content that `docs-wiki` emits.
-
-`docs-wiki/public/docs-wiki.css` is the generated theme asset layer. It sets VitePress brand variables and adds scoped styling for overview/module/workspace/file pages through the emitted `pageClass` values.
-
-## Built-in VitePress Commands
-
-The CLI bundles VitePress and forwards a focused subset of the official CLI flags:
-
-```bash
-npx docs-wiki serve --port 4173 --open
-npx docs-wiki serve --base /internal-docs/ --strict-port
-npx docs-wiki build-site --base /internal-docs/
-npx docs-wiki preview --port 4174
-```
-
-Supported forwarded flags:
-
-- `--port`
-- `--open`
-- `--base`
-- `--strict-port`
-- `--force`
-
-When serving generated docs, the CLI also prepares the generated site with access to the bundled VitePress runtime dependencies so local dev starts cleanly.
+This reruns the generation pipeline on changes and ignores the output directory itself.
 
 ## Deploy Scaffolds
 
-Generate a GitHub Pages workflow:
+Generate GitHub Pages workflow:
 
 ```bash
 npx docs-wiki init-deploy --target github-pages
 ```
 
-This writes `.github/workflows/docs-wiki-pages.yml` in the target project root. The generated workflow builds `docs-wiki/.vitepress/dist` and deploys it with the current GitHub Pages actions stack. It defaults to branch `main`; override with `--deploy-branch`.
-
-Generate a Vercel config:
+Generate Vercel config:
 
 ```bash
 npx docs-wiki init-deploy --target vercel
 ```
 
-This writes `vercel.json` with:
+Use `--overwrite` if the target file already exists and you intentionally want to replace it.
 
-- `buildCommand: "npx --yes docs-wiki build-site"`
-- `outputDirectory: "docs-wiki/.vitepress/dist"`
+## Example Workflow For A New User
 
-Use `--overwrite` if you intentionally want to replace an existing scaffold file.
+Inside a project you want to document:
 
-## Development
+```bash
+npx docs-wiki --ai --flow-diagram both
+npx docs-wiki serve
+```
+
+Then inspect these pages first:
+
+1. `docs-wiki/index.md`
+2. `docs-wiki/design/basic-design.md`
+3. `docs-wiki/design/detail-design.md`
+4. `docs-wiki/design/api-contracts.md`
+5. `docs-wiki/design/flows.md`
+6. `docs-wiki/modules/index.md`
+
+## Repository Layout
+
+For contributors to this repository:
+
+- `bin/docs-wiki.js`: CLI entry point
+- `src/cli.js`: command parsing and orchestration
+- `src/scanner.js`: discovery, parsing, dependency extraction, API/schema inference
+- `src/design.js`: design model, flow inference, endpoint sequence generation
+- `src/generator.js`: Markdown, VitePress, search index, and page rendering
+- `src/ai.js`: OpenAI/Ollama integration and normalization
+- `src/config.js`: config and option resolution
+- `src/vitepress.js`: local VitePress execution wrapper
+- `src/deploy.js`: deploy scaffold generation
+- `test/smoke.test.js`: end-to-end smoke tests
+
+## Local Development
+
+Install dependencies:
 
 ```bash
 npm install
-npm test
-node ./bin/docs-wiki.js --help
 ```
-# docs-wiki
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run the CLI from source:
+
+```bash
+node ./bin/docs-wiki.js --help
+node ./bin/docs-wiki.js
+node ./bin/docs-wiki.js serve
+```
+
+Recommended contributor loop:
+
+1. update scanner/design/generator code
+2. run `npm test`
+3. run a local smoke generation against a fixture repo
+4. run `node ./bin/docs-wiki.js build-site` against a sample project if VitePress output changed
+
+## Current Limits
+
+`docs-wiki` is intentionally heuristic-first. That keeps setup simple, but it has limits.
+
+Current important limits:
+
+- call graph quality is strongest for JS/TS
+- Python support is lighter for interaction inference
+- Go and Rust are more dependency-oriented than semantic call-graph oriented
+- API contract extraction is strongest for JS/TS server code
+- nested schema inference is still shallow; top-level fields are the main reliable output
+- endpoint and business flows are inferred, not runtime-traced
+- AI improves wording and business framing, but should not be treated as ground truth
+
+## Status
+
+This repository is usable as a working CLI package, but it is still evolving.
+
+If you are extending it, prefer improving the scan/design model first, then the Markdown renderer second. Most downstream features depend on better scan results, not on more template logic.

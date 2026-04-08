@@ -28,6 +28,8 @@ const DEFAULT_TEMPLATE = 'detailed';
 const DEFAULT_OUTPUT = TEMPLATE_PRESETS[DEFAULT_TEMPLATE];
 const THEME_PRESETS = ['clean', 'warm', 'enterprise'];
 const DEFAULT_THEME_PRESET = 'clean';
+const FLOW_DIAGRAM_MODES = ['flow', 'sequence', 'both', 'none'];
+const DEFAULT_FLOW_DIAGRAM_MODE = 'flow';
 const DEFAULT_OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1';
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
@@ -81,6 +83,18 @@ function normalizeThemePreset(value) {
   return value;
 }
 
+function normalizeFlowDiagramMode(value) {
+  if (!value) {
+    return DEFAULT_FLOW_DIAGRAM_MODE;
+  }
+
+  if (!FLOW_DIAGRAM_MODES.includes(value)) {
+    throw new Error(`Unknown docs-wiki flow diagram mode: ${value}`);
+  }
+
+  return value;
+}
+
 async function loadUserConfig(rootDir, explicitConfigPath) {
   const configPath = explicitConfigPath ? path.resolve(explicitConfigPath) : path.join(rootDir, 'docs-wiki.config.json');
 
@@ -110,6 +124,7 @@ function resolveOutput(templateName, outputConfig = {}, themePresetName) {
   return {
     template,
     themePreset,
+    flowDiagram: normalizeFlowDiagramMode(outputConfig.flowDiagram),
     includeCodeBlocks: normalizeBoolean(outputConfig.includeCodeBlocks, preset.includeCodeBlocks),
     includeAiSections: normalizeBoolean(outputConfig.includeAiSections, preset.includeAiSections),
     includeUsageNotes: normalizeBoolean(outputConfig.includeUsageNotes, preset.includeUsageNotes),
@@ -123,7 +138,10 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
   const aiConfig = fileConfig.ai || {};
   const output = resolveOutput(
     cliOptions.template ?? fileConfig.template ?? outputConfig.template,
-    outputConfig,
+    {
+      ...outputConfig,
+      flowDiagram: cliOptions.flowDiagram ?? outputConfig.flowDiagram,
+    },
     cliOptions.themePreset ?? fileConfig.themePreset ?? outputConfig.themePreset,
   );
 
@@ -148,6 +166,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaModelStrategy: cliOptions.ollamaModelStrategy ?? aiConfig.ollamaModelStrategy ?? process.env.OLLAMA_MODEL_STRATEGY ?? DEFAULT_OLLAMA_MODEL_STRATEGY,
       ollamaApiKey: process.env.OLLAMA_API_KEY ?? 'ollama',
       filePrompt: typeof aiConfig.filePrompt === 'string' ? aiConfig.filePrompt.trim() : '',
+      modulePrompt: typeof aiConfig.modulePrompt === 'string' ? aiConfig.modulePrompt.trim() : '',
       projectPrompt: typeof aiConfig.projectPrompt === 'string' ? aiConfig.projectPrompt.trim() : '',
     },
     config: {
@@ -170,6 +189,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaModelStrategy: resolved.ai.ollamaModelStrategy,
       ollamaBaseURL: resolved.ai.ollamaBaseURL,
       reasoningEffort: resolved.ai.reasoningEffort,
+      modulePrompt: resolved.ai.modulePrompt,
       filePrompt: resolved.ai.filePrompt,
       projectPrompt: resolved.ai.projectPrompt,
     }),
@@ -194,6 +214,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaModel: resolved.ai.ollamaModel,
       ollamaBaseURL: resolved.ai.ollamaBaseURL,
       reasoningEffort: resolved.ai.reasoningEffort,
+      modulePrompt: resolved.ai.modulePrompt,
     },
   };
 
@@ -208,6 +229,8 @@ module.exports = {
   DEFAULT_TEMPLATE,
   TEMPLATE_PRESETS,
   THEME_PRESETS,
+  FLOW_DIAGRAM_MODES,
+  DEFAULT_FLOW_DIAGRAM_MODE,
   loadUserConfig,
   resolveOptions,
 };

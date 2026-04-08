@@ -11,8 +11,11 @@ The generated Markdown is now VitePress-friendly by default:
 - `docs-wiki/.vitepress/config.mjs` enables VitePress local search out of the box
 - `docs-wiki/search-index.json` provides a portable local search index for custom UIs
 - `docs-wiki/public/docs-wiki.css` provides generated visual theming for the wiki pages
+- `docs-wiki/.vitepress/theme/index.mjs` renders Mermaid diagrams in the generated VitePress site
 - the CLI can run bundled VitePress commands directly through `serve`, `build-site`, and `preview`
 - the generated `index.md` uses VitePress `layout: home` with hero and feature cards
+- project output now includes inferred Basic Design, Detail Design, and flow-analysis pages
+- local import dependencies are resolved into file/module interaction graphs so flow ordering is based on actual code edges when possible
 
 ## Usage
 
@@ -96,6 +99,11 @@ By default the CLI writes:
 
 - `docs-wiki/SUMMARY.md`: top-level wiki navigation
 - `docs-wiki/index.md`: project overview, language breakdown, key modules
+- `docs-wiki/design/index.md`: design-doc landing page
+- `docs-wiki/design/basic-design.md`: system intent, actors, capability map, context diagram
+- `docs-wiki/design/detail-design.md`: runtime structure, module responsibilities, implementation view
+- `docs-wiki/design/api-contracts.md`: inferred HTTP endpoints with request and response contracts
+- `docs-wiki/design/flows.md`: inferred business/request flows with Mermaid diagrams based on the configured diagram mode
 - `docs-wiki/.vitepress/config.mjs`: VitePress config scaffold with `search.provider = 'local'`
 - `docs-wiki/vitepress.schema.json`: JSON Schema for the generated VitePress frontmatter
 - `docs-wiki/search-index.json`: local JSON search index for overview/module/workspace/file pages
@@ -121,6 +129,7 @@ Example:
   "template": "api-first",
   "themePreset": "warm",
   "output": {
+    "flowDiagram": "flow",
     "includeCodeBlocks": true,
     "includeAiSections": true,
     "includeUsageNotes": false,
@@ -135,6 +144,7 @@ Example:
     "ollamaModelStrategy": "family",
     "reasoningEffort": "none",
     "filePrompt": "Describe contracts and side effects.",
+    "modulePrompt": "Emphasize business capability, actors, and request flow.",
     "projectPrompt": "Emphasize runtime architecture and boundaries."
   }
 }
@@ -150,6 +160,7 @@ Supported config keys:
 - `watch`
 - `template`
 - `themePreset` (`clean`, `warm`, `enterprise`)
+- `output.flowDiagram` (`flow`, `sequence`, `both`, `none`)
 - `output.includeCodeBlocks`
 - `output.includeAiSections`
 - `output.includeUsageNotes`
@@ -163,6 +174,7 @@ Supported config keys:
 - `ai.reasoningEffort`
 - `ai.baseURL`
 - `ai.filePrompt`
+- `ai.modulePrompt`
 - `ai.projectPrompt`
 
 Templates:
@@ -170,6 +182,31 @@ Templates:
 - `basic`: structural docs only, no AI sections or code blocks
 - `detailed`: richer pages with AI sections, usage notes, and public API highlighting
 - `api-first`: emphasize exported/public symbols without embedding code blocks
+
+Even when AI is disabled, `docs-wiki` still emits heuristic design pages and flow diagrams from folder names, symbol names, imports, and module structure. When AI is enabled, those design pages get materially better because file summaries contribute higher-level business hints.
+
+API contract extraction:
+
+- Express-style handlers such as `router.post("/login", loginHandler)`
+- file-based Next.js route handlers such as `app/api/**/route.ts` and `pages/api/**`
+- endpoints grouped by dominant domain such as `auth`, `order`, or `payment`
+- inferred request fields from `req.body`, `req.query`, `req.params`, `request.json()`, headers, and query access
+- inferred response shapes from `res.status(...).json(...)`, `res.json(...)`, and `NextResponse.json(...)`
+- request schema refs from `zod` parsers like `loginSchema.parse(req.body)` or `loginSchema.parse(body)`
+- request/response DTO refs from local interfaces and type aliases such as `LoginRequest` or `NextApiResponse<LoginResponse>`
+- endpoint-level sequence diagrams built from the endpoint entry file plus local call/dependency handoffs
+
+Diagram modes:
+
+- `flow`: default, render only flowcharts
+- `sequence`: render only sequence diagrams
+- `both`: render both flowcharts and sequence diagrams
+- `none`: omit Mermaid flow diagrams from flow sections
+
+The current design layer uses two sources of evidence:
+
+- structural heuristics: folder names, symbol names, exported APIs, detected roles such as route/service/repository
+- graph evidence: local imports, lightweight imported-symbol call detection, and module-to-module dependency aggregation
 
 Theme presets:
 
@@ -218,6 +255,9 @@ For local Ollama models, `docs-wiki` also applies a normalization pass so slight
 Generated AI content includes:
 
 - file-level summaries
+- module-level business capability, basic-design, and detail-design summaries
+- project-level overview and key modules
+- improved business-capability wording on module/design pages when the underlying file summaries provide enough evidence
 - file responsibilities and usage notes
 - symbol-level summaries
 - a project-level overview with key modules

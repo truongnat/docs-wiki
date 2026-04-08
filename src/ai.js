@@ -6,6 +6,7 @@ const DEFAULT_AI_MODEL = 'gpt-5.4-mini';
 const DEFAULT_REASONING_EFFORT = 'none';
 const DEFAULT_OLLAMA_MODEL_STRATEGY = 'family';
 const DEFAULT_FILE_SYSTEM_PROMPT = 'You generate compact technical documentation for source files. Be precise, concise, and avoid speculation.';
+const DEFAULT_MODULE_SYSTEM_PROMPT = 'You generate business-oriented module documentation from file summaries and code structure. Focus on capability, business flow, and module boundaries.';
 const DEFAULT_PROJECT_SYSTEM_PROMPT = 'You generate top-level project overviews for internal engineering wikis. Keep it concrete and architecture-focused.';
 const DEFAULT_OLLAMA_TIMEOUT_MS = 1200;
 
@@ -28,6 +29,24 @@ const ProjectSummarySchema = z.object({
   })).max(6),
 });
 
+const ModuleSummarySchema = z.object({
+  capability: z.string(),
+  basicDesign: z.string(),
+  detailDesign: z.string(),
+  actors: z.array(z.string()).max(4).default([]),
+  entryPoints: z.array(z.string()).max(6).default([]),
+  dataStores: z.array(z.string()).max(5).default([]),
+  integrations: z.array(z.string()).max(5).default([]),
+  components: z.array(z.object({
+    name: z.string(),
+    responsibility: z.string(),
+  })).max(8).default([]),
+  keyFlows: z.array(z.object({
+    name: z.string(),
+    goal: z.string(),
+  })).max(4).default([]),
+});
+
 function createSymbolKey(symbol) {
   return `${symbol.kind}:${symbol.name}:${symbol.startLine}`;
 }
@@ -45,6 +64,13 @@ function moduleAncestorsForFile(file) {
     modules.push(current);
   }
   return modules;
+}
+
+function filesForModule(files, directory) {
+  if (!directory) {
+    return files.slice();
+  }
+  return files.filter((file) => file.directory === directory || file.directory.startsWith(`${directory}/`));
 }
 
 function clip(value, limit) {
@@ -86,6 +112,15 @@ function buildFilePrompt(file) {
 }
 
 function buildProjectPrompt(scanResult) {
+  const moduleBlocks = scanResult.ai && Array.isArray(scanResult.ai.modules)
+    ? scanResult.ai.modules.slice(0, 24).map((module) => [
+      `module: ${module.directory || '(root)'}`,
+      `capability: ${module.capability || 'n/a'}`,
+      `basicDesign: ${module.basicDesign || 'n/a'}`,
+      `detailDesign: ${module.detailDesign || 'n/a'}`,
+      `keyFlows: ${(module.keyFlows || []).map((flow) => flow.name).join('; ') || 'n/a'}`,
+    ].join('\n'))
+    : [];
   const fileBlocks = scanResult.files.slice(0, 80).map((file) => {
     const aiSummary = file.ai || {};
     return [
@@ -106,6 +141,38 @@ function buildProjectPrompt(scanResult) {
     'Summarize the project at a docs landing-page level.',
     'Highlight architectural themes and the most important modules from the provided file summaries.',
     `The known modules are: ${scanResult.directories.map((entry) => entry.directory || '(root)').join(', ')}`,
+    moduleBlocks.length > 0 ? '\nModule summaries:\n' : '',
+    moduleBlocks.length > 0 ? moduleBlocks.join('\n\n') : '',
+    '',
+    'Files:',
+    fileBlocks.join('\n\n'),
+  ].join('\n');
+}
+
+function buildModulePrompt(module, files) {
+  const fileBlocks = files.slice(0, 16).map((file) => {
+    const aiSummary = file.ai || {};
+    const publicSymbols = file.symbols.filter((symbol) => symbol.exported).map((symbol) => symbol.name).slice(0, 8);
+    return [
+      `file: ${file.relativePath}`,
+      `language: ${file.language}`,
+      `imports: ${(file.imports || []).slice(0, 12).join(', ') || 'n/a'}`,
+      `publicSymbols: ${publicSymbols.join(', ') || 'n/a'}`,
+      `summary: ${aiSummary.summary || 'n/a'}`,
+      `responsibilities: ${(aiSummary.responsibilities || []).join('; ') || 'n/a'}`,
+    ].join('\n');
+  });
+
+  return [
+    `Module directory: ${module.directory || '(root)'}`,
+    `Module file count: ${files.length}`,
+    `Module symbol count: ${files.reduce((sum, file) => sum + file.symbols.length, 0)}`,
+    `Languages: ${Array.from(new Set(files.map((file) => file.language))).join(', ') || 'n/a'}`,
+    '',
+    'Infer the business capability and design intent of this module from the file summaries and source structure.',
+    'Prefer business language such as login, onboarding, billing, reconciliation, notification delivery, etc when the evidence supports it.',
+    'Do not restate symbol names unless they clarify the business flow.',
+    'Keep the design statements specific enough to be useful in basic design and detail design documentation.',
     '',
     'Files:',
     fileBlocks.join('\n\n'),
@@ -170,6 +237,9 @@ function pickOllamaModel(preferredModel, availableModels, strategy = DEFAULT_OLL
 
 async function resolveAiProvider(options, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
+  if (dependencies.resolvedProvider) {
+    return dependencies.resolvedProvider;
+  }
   if (options.provider === 'openai') {
     if (!options.apiKey) {
       throw new Error('OpenAI provider requires OPENAI_API_KEY or --openai-api-key.');
@@ -393,6 +463,75 @@ function coerceProjectSummary(raw, scanResult) {
   return ProjectSummarySchema.parse(normalized);
 }
 
+function normalizeComponentSummaries(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const name = normalizeString(entry.name || entry.component || entry.file);
+      const responsibility = normalizeString(entry.responsibility || entry.summary || entry.reason);
+      if (!name || !responsibility) {
+        return null;
+      }
+      return { name, responsibility };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function normalizeFlowSummaries(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const name = normalizeString(entry.name || entry.flow || entry.title);
+      const goal = normalizeString(entry.goal || entry.summary || entry.reason);
+      if (!name || !goal) {
+        return null;
+      }
+      return { name, goal };
+    })
+    .filter((entry) => !isGenericSummary(entry.name) && !isGenericSummary(entry.goal))
+    .slice(0, 4);
+}
+
+function coerceModuleSummary(raw, module, files) {
+  const rawCapability = normalizeString(raw && raw.capability);
+  const rawBasicDesign = normalizeString(raw && raw.basicDesign);
+  const rawDetailDesign = normalizeString(raw && raw.detailDesign);
+  const fileNames = new Set(files.map((file) => file.relativePath));
+
+  const normalized = {
+    capability: !isGenericSummary(rawCapability)
+      ? rawCapability
+      : `${module.directory || '(root)'} handles business logic across ${files.length} file${files.length === 1 ? '' : 's'}.`,
+    basicDesign: !isGenericSummary(rawBasicDesign)
+      ? rawBasicDesign
+      : `The module groups related entry points, orchestration, and persistence needed for ${module.directory || 'the current capability'}.`,
+    detailDesign: !isGenericSummary(rawDetailDesign)
+      ? rawDetailDesign
+      : `Implementation details are split across ${files.slice(0, 4).map((file) => file.relativePath).join(', ')}.`,
+    actors: normalizeStringArray(raw && raw.actors, 4),
+    entryPoints: normalizeStringArray(raw && raw.entryPoints, 6).filter((entry) => fileNames.has(entry) || files.some((file) => file.relativePath.endsWith(entry))),
+    dataStores: normalizeStringArray(raw && raw.dataStores, 5),
+    integrations: normalizeStringArray(raw && raw.integrations, 5),
+    components: normalizeComponentSummaries(raw && raw.components),
+    keyFlows: normalizeFlowSummaries(raw && raw.keyFlows),
+  };
+
+  return ModuleSummarySchema.parse(normalized);
+}
+
 async function summarizeFile(client, file, options, providerInfo) {
   const systemPrompt = options.filePrompt
     ? `${DEFAULT_FILE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.filePrompt}`
@@ -432,6 +571,58 @@ async function summarizeFile(client, file, options, providerInfo) {
     ],
     text: {
       format: zodTextFormat(FileSummarySchema, 'file_summary'),
+    },
+  });
+
+  return response.output_parsed;
+}
+
+async function summarizeModule(client, module, files, options, providerInfo) {
+  const systemPrompt = options.modulePrompt
+    ? `${DEFAULT_MODULE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.modulePrompt}`
+    : DEFAULT_MODULE_SYSTEM_PROMPT;
+
+  if (providerInfo.provider === 'ollama') {
+    const response = await client.chat.completions.create({
+      model: providerInfo.model,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `${systemPrompt}\nReturn valid JSON only.` },
+        {
+          role: 'user',
+          content: `${buildModulePrompt(module, files)}\n\nReturn a JSON object with this exact shape:
+{
+  "capability": "string",
+  "basicDesign": "string",
+  "detailDesign": "string",
+  "actors": ["string"],
+  "entryPoints": ["src/auth/login-route.ts"],
+  "dataStores": ["string"],
+  "integrations": ["string"],
+  "components": [
+    { "name": "auth-service.ts", "responsibility": "string" }
+  ],
+  "keyFlows": [
+    { "name": "Auth login", "goal": "string" }
+  ]
+}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0] && response.choices[0].message ? response.choices[0].message.content : '';
+    return coerceModuleSummary(extractJsonPayload(content), module, files);
+  }
+
+  const response = await client.responses.parse({
+    model: providerInfo.model,
+    reasoning: { effort: options.reasoningEffort },
+    input: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: buildModulePrompt(module, files) },
+    ],
+    text: {
+      format: zodTextFormat(ModuleSummarySchema, 'module_summary'),
     },
   });
 
@@ -512,6 +703,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     ollamaApiKey: rawOptions.ollamaApiKey || process.env.OLLAMA_API_KEY || 'ollama',
     reasoningEffort: rawOptions.reasoningEffort || process.env.DOCS_WIKI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
     filePrompt: rawOptions.filePrompt || '',
+    modulePrompt: rawOptions.modulePrompt || '',
     projectPrompt: rawOptions.projectPrompt || '',
     previousManifest: rawOptions.previousManifest || null,
   };
@@ -523,6 +715,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
         enabled: false,
         model: null,
         errors: [],
+        modules: [],
       },
       incremental: {
         ...scanResult.incremental,
@@ -552,7 +745,12 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
   const errors = [];
   const aiChangedFiles = [];
   let reusedAiFiles = 0;
-  const aiTotalSteps = scanResult.files.length + 1;
+  const previousModulesByDirectory = new Map(
+    canReuseAi && previousManifest.ai && Array.isArray(previousManifest.ai.modules)
+      ? previousManifest.ai.modules.map((module) => [module.directory, module])
+      : [],
+  );
+  const aiTotalSteps = scanResult.files.length + scanResult.directories.length + 1;
   let aiStep = 0;
 
   for (const file of scanResult.files) {
@@ -618,6 +816,61 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
       .map((file) => file.workspace.directory),
   )).sort();
 
+  const modules = [];
+  let reusedAiModules = 0;
+  const sourceChangedSet = new Set(aiChangedFiles.length > 0 ? aiChangedFiles : Array.from(sourceChanged));
+
+  for (const module of scanResult.directories) {
+    const moduleFiles = filesForModule(files, module.directory);
+    const previousModule = previousModulesByDirectory.get(module.directory);
+    const moduleHasChangedFiles = moduleFiles.some((file) => sourceChangedSet.has(file.relativePath));
+    const canReuseModuleAi = Boolean(
+      canReuseAi
+      && previousModule
+      && !moduleHasChangedFiles
+      && !aiChangedModules.includes(module.directory)
+    );
+
+    aiStep += 1;
+    onProgress?.({
+      type: 'ai_progress',
+      current: aiStep,
+      total: aiTotalSteps,
+      file: module.directory || '(root module)',
+      mode: canReuseModuleAi ? 'cached' : 'summarize',
+    });
+
+    if (canReuseModuleAi) {
+      modules.push(previousModule);
+      reusedAiModules += 1;
+      continue;
+    }
+
+    try {
+      const parsed = await summarizeModule(client, module, moduleFiles, options, providerInfo);
+      modules.push({
+        directory: module.directory,
+        ...parsed,
+      });
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      errors.push({ scope: module.directory || '(root module)', message });
+      modules.push({
+        directory: module.directory,
+        capability: null,
+        basicDesign: null,
+        detailDesign: null,
+        actors: [],
+        entryPoints: [],
+        dataStores: [],
+        integrations: [],
+        components: [],
+        keyFlows: [],
+        error: message,
+      });
+    }
+  }
+
   let project = null;
   let aiProjectChanged = false;
 
@@ -642,6 +895,9 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
       const interimResult = {
         ...scanResult,
         files,
+        ai: {
+          modules,
+        },
       };
       project = await summarizeProject(client, interimResult, options, providerInfo);
       aiProjectChanged = true;
@@ -664,6 +920,8 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
       errors,
       summarizedFiles: files.filter((file) => file.ai && file.ai.summary).length,
       reusedFiles: reusedAiFiles,
+      modules,
+      reusedModules: reusedAiModules,
       project,
     },
     incremental: {

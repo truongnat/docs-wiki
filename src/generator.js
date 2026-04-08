@@ -10,8 +10,14 @@ const {
 const VITEPRESS_SCHEMA_VERSION = '1.0.0';
 const VITEPRESS_SCHEMA_FILE = 'vitepress.schema.json';
 const VITEPRESS_CONFIG_FILE = path.join('.vitepress', 'config.mjs');
+const VITEPRESS_THEME_FILE = path.join('.vitepress', 'theme', 'index.mjs');
 const SEARCH_INDEX_FILE = 'search-index.json';
 const THEME_STYLES_FILE = path.join('public', 'docs-wiki.css');
+const DESIGN_INDEX_FILE = path.join('design', 'index.md');
+const BASIC_DESIGN_FILE = path.join('design', 'basic-design.md');
+const DETAIL_DESIGN_FILE = path.join('design', 'detail-design.md');
+const FLOW_CATALOG_FILE = path.join('design', 'flows.md');
+const API_CONTRACTS_FILE = path.join('design', 'api-contracts.md');
 const DEFAULT_PAGE_CLASS_PREFIX = 'docs-wiki';
 const THEME_STYLE_PRESETS = {
   clean: {
@@ -256,6 +262,7 @@ function renderVitePressConfig(scanResult) {
       },
       nav: [
         { text: 'Overview', link: '/' },
+        { text: 'Design', link: '/design/' },
         { text: 'Modules', link: '/modules/' },
         { text: 'Workspaces', link: '/workspaces/' },
       ],
@@ -264,8 +271,22 @@ function renderVitePressConfig(scanResult) {
           createSidebarGroup('Overview', [
             { text: 'Project Overview', link: '/' },
             { text: 'Summary', link: toVitePressLink('SUMMARY.md') },
+            { text: 'Design Overview', link: toVitePressLink(DESIGN_INDEX_FILE) },
+            { text: 'Basic Design', link: toVitePressLink(BASIC_DESIGN_FILE) },
+            { text: 'Detail Design', link: toVitePressLink(DETAIL_DESIGN_FILE) },
+            { text: 'API Contracts', link: toVitePressLink(API_CONTRACTS_FILE) },
+            { text: 'Flow Catalog', link: toVitePressLink(FLOW_CATALOG_FILE) },
             { text: 'Module Index', link: toVitePressLink(path.join('modules', 'index.md')) },
             { text: 'Workspace Index', link: toVitePressLink(path.join('workspaces', 'index.md')) },
+          ]),
+        ].filter(Boolean),
+        '/design/': [
+          createSidebarGroup('Design Docs', [
+            { text: 'Design Overview', link: toVitePressLink(DESIGN_INDEX_FILE) },
+            { text: 'Basic Design', link: toVitePressLink(BASIC_DESIGN_FILE) },
+            { text: 'Detail Design', link: toVitePressLink(DETAIL_DESIGN_FILE) },
+            { text: 'API Contracts', link: toVitePressLink(API_CONTRACTS_FILE) },
+            { text: 'Flow Catalog', link: toVitePressLink(FLOW_CATALOG_FILE) },
           ]),
         ].filter(Boolean),
         '/modules/': [
@@ -458,6 +479,89 @@ function renderThemeStyles(output) {
     '  padding: 0.35rem 0;',
     '}',
     '',
+    '.docs-wiki-mermaid {',
+    '  margin: 1.25rem 0;',
+    '  padding: 1rem;',
+    '  border: 1px solid var(--docs-wiki-panel-strong);',
+    '  border-radius: 18px;',
+    '  background: linear-gradient(180deg, var(--docs-wiki-panel), transparent);',
+    '  overflow-x: auto;',
+    '}',
+    '',
+    '.docs-wiki-mermaid svg {',
+    '  max-width: 100%;',
+    '  height: auto;',
+    '}',
+    '',
+    '.docs-wiki--design .vp-doc h3,',
+    '.docs-wiki--design-index .vp-doc h3,',
+    '.docs-wiki--module .vp-doc h3,',
+    '.docs-wiki--workspace .vp-doc h3 {',
+    '  margin-top: 1.5rem;',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function renderVitePressThemeEntry() {
+  return [
+    "import DefaultTheme from 'vitepress/theme';",
+    "import { nextTick, watch } from 'vue';",
+    "import { useRoute } from 'vitepress';",
+    '',
+    'let mermaidInstance = null;',
+    '',
+    'async function renderMermaidDiagrams() {',
+    '  if (typeof document === "undefined" || typeof window === "undefined") {',
+    '    return;',
+    '  }',
+    '',
+    '  if (!mermaidInstance) {',
+    '    const module = await import("mermaid");',
+    '    mermaidInstance = module.default;',
+    '    mermaidInstance.initialize({',
+    '      startOnLoad: false,',
+    '      securityLevel: "loose",',
+    '      theme: document.documentElement.classList.contains("dark") ? "dark" : "default",',
+    '    });',
+    '  }',
+    '',
+    '  const blocks = Array.from(document.querySelectorAll("pre code.language-mermaid"));',
+    '  for (const code of blocks) {',
+    '    const pre = code.parentElement;',
+    '    if (!pre || pre.dataset.docsWikiMermaid === "rendered") {',
+    '      continue;',
+    '    }',
+    '',
+    '    pre.dataset.docsWikiMermaid = "rendered";',
+    '    const source = code.textContent || "";',
+    '    const wrapper = document.createElement("div");',
+    '    wrapper.className = "docs-wiki-mermaid";',
+    '    const id = `docs-wiki-mermaid-${Math.random().toString(36).slice(2)}`;',
+    '',
+    '    try {',
+    '      const { svg, bindFunctions } = await mermaidInstance.render(id, source);',
+    '      wrapper.innerHTML = svg;',
+      '      bindFunctions?.(wrapper);',
+    '      pre.replaceWith(wrapper);',
+    '    } catch (error) {',
+    '      pre.dataset.docsWikiMermaid = "error";',
+    '      console.error("[docs-wiki] Failed to render Mermaid diagram", error);',
+    '    }',
+    '  }',
+    '}',
+    '',
+    'export default {',
+    '  extends: DefaultTheme,',
+    '  setup() {',
+    '    const route = useRoute();',
+    '',
+    '    const refresh = () => nextTick(() => renderMermaidDiagrams());',
+    '    watch(() => route.path, refresh, { flush: "post" });',
+    '    nextTick(() => renderMermaidDiagrams());',
+    '  },',
+    '};',
+    '',
   ].join('\n');
 }
 
@@ -478,8 +582,64 @@ function buildSearchEntry({ id, kind, title, url, summary, content, keywords = [
   };
 }
 
+function getDesignModel(scanResult) {
+  return scanResult.design || { project: { basicDesign: {}, detailDesign: {}, flows: [] }, modules: [], workspaces: [] };
+}
+
+function getModuleDesign(scanResult, directory) {
+  return getDesignModel(scanResult).modules.find((entry) => entry.directory === directory) || null;
+}
+
+function getWorkspaceDesign(scanResult, directory) {
+  return getDesignModel(scanResult).workspaces.find((entry) => entry.directory === directory) || null;
+}
+
+function getApiEndpointDesign(scanResult, endpointId) {
+  const api = getDesignModel(scanResult).api;
+  if (!api || !Array.isArray(api.endpoints)) {
+    return null;
+  }
+  return api.endpoints.find((entry) => entry.id === endpointId) || null;
+}
+
+function renderMermaidDiagram(diagram) {
+  return createFence(String(diagram || '').trim(), 'mermaid');
+}
+
+function renderStringList(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return ['- n/a'];
+  }
+  return items.map((item) => `- ${escapeAngleBracketsForVueMarkdown(String(item))}`);
+}
+
+function renderModuleInteractionDiagram(interactions) {
+  if (!Array.isArray(interactions) || interactions.length === 0) {
+    return '';
+  }
+
+  const lines = ['flowchart LR'];
+  const nodes = new Set();
+  for (const edge of interactions) {
+    nodes.add(edge.from || 'root');
+    nodes.add(edge.to || 'root');
+  }
+  for (const directory of Array.from(nodes).sort((left, right) => left.localeCompare(right))) {
+    const nodeId = String(directory || 'root').replace(/[^a-zA-Z0-9_]/g, '_');
+    const label = (directory || '(root)').replace(/"/g, '\'');
+    lines.push(`  ${nodeId}["${label}"]`);
+  }
+  for (const edge of interactions) {
+    const fromId = String(edge.from || 'root').replace(/[^a-zA-Z0-9_]/g, '_');
+    const toId = String(edge.to || 'root').replace(/[^a-zA-Z0-9_]/g, '_');
+    lines.push(`  ${fromId} -->|\"${edge.weight || 1} dep\"| ${toId}`);
+  }
+  return renderMermaidDiagram(lines.join('\n'));
+}
+
 function renderSearchIndex(scanResult, output) {
   const entries = [];
+  const design = getDesignModel(scanResult);
 
   entries.push(buildSearchEntry({
     id: 'page:index',
@@ -511,8 +671,73 @@ function renderSearchIndex(scanResult, output) {
     keywords: ['summary', 'navigation', scanResult.projectName],
   }));
 
+  entries.push(buildSearchEntry({
+    id: 'page:design-index',
+    kind: 'design',
+    title: 'Design Overview',
+    url: toVitePressLink(DESIGN_INDEX_FILE),
+    summary: design.project.basicDesign.summary || `Design overview for ${scanResult.projectName}.`,
+    content: [
+      design.project.basicDesign.summary,
+      ...(design.project.basicDesign.actors || []),
+      ...(design.project.flows || []).map((flow) => flow.name),
+    ].join(' '),
+    keywords: ['design', 'overview', 'architecture', scanResult.projectName],
+  }));
+
+  entries.push(buildSearchEntry({
+    id: 'page:basic-design',
+    kind: 'design',
+    title: 'Basic Design',
+    url: toVitePressLink(BASIC_DESIGN_FILE),
+    summary: design.project.basicDesign.summary || `Basic design for ${scanResult.projectName}.`,
+    content: [
+      design.project.basicDesign.summary,
+      ...(design.project.basicDesign.actors || []),
+      ...(design.project.basicDesign.capabilities || []).map((item) => `${item.title} ${item.summary}`),
+    ].join(' '),
+    keywords: ['basic design', 'business capability', 'context', scanResult.projectName],
+  }));
+
+  entries.push(buildSearchEntry({
+    id: 'page:detail-design',
+    kind: 'design',
+    title: 'Detail Design',
+    url: toVitePressLink(DETAIL_DESIGN_FILE),
+    summary: design.project.detailDesign.summary || `Detail design for ${scanResult.projectName}.`,
+    content: [
+      design.project.detailDesign.summary,
+      ...(design.project.detailDesign.runtimeLayers || []),
+      ...(design.project.detailDesign.modules || []).map((item) => `${item.title} ${item.detailDesign}`),
+    ].join(' '),
+    keywords: ['detail design', 'runtime', 'components', scanResult.projectName],
+  }));
+
+  entries.push(buildSearchEntry({
+    id: 'page:api-contracts',
+    kind: 'api',
+    title: 'API Contracts',
+    url: toVitePressLink(API_CONTRACTS_FILE),
+    summary: `Inferred HTTP endpoint contracts for ${scanResult.projectName}.`,
+    content: getApiContracts(scanResult)
+      .map((endpoint) => `${endpoint.group || 'general'} ${endpoint.method} ${endpoint.path} ${endpoint.file} ${requestContractSummary(endpoint)} ${responseContractSummary(endpoint)}`)
+      .join(' '),
+    keywords: ['api', 'contract', 'http', 'endpoint', scanResult.projectName, ...getApiGroups(scanResult).map((group) => group.group)],
+  }));
+
+  entries.push(buildSearchEntry({
+    id: 'page:flows',
+    kind: 'flow',
+    title: 'Flow Catalog',
+    url: toVitePressLink(FLOW_CATALOG_FILE),
+    summary: `Inferred business and request flows for ${scanResult.projectName}.`,
+    content: (design.project.flows || []).map((flow) => `${flow.name} ${flow.goal}`).join(' '),
+    keywords: ['flow', 'diagram', 'business flow', scanResult.projectName],
+  }));
+
   for (const module of scanResult.directories) {
     const workspace = getWorkspaceForModule(scanResult, module.directory);
+    const moduleDesign = getModuleDesign(scanResult, module.directory);
     entries.push(buildSearchEntry({
       id: `module:${module.directory || 'root'}`,
       kind: 'module',
@@ -524,6 +749,8 @@ function renderSearchIndex(scanResult, output) {
         module.directFiles.join(' '),
         module.languages.join(' '),
         output.includeAiSections ? getKeyModuleReason(scanResult, module.directory) : '',
+        getModuleApiContracts(scanResult, module.directory).map((endpoint) => `${endpoint.method} ${endpoint.path}`).join(' '),
+        moduleDesign ? `${moduleDesign.capability} ${moduleDesign.basicDesign} ${moduleDesign.flows.map((flow) => flow.name).join(' ')}` : '',
       ].join(' '),
       keywords: ['module', module.directory || 'root', ...(workspace ? [workspace.name] : []), ...module.languages],
       meta: {
@@ -534,6 +761,7 @@ function renderSearchIndex(scanResult, output) {
   }
 
   for (const workspace of scanResult.workspaces) {
+    const workspaceDesign = getWorkspaceDesign(scanResult, workspace.directory);
     entries.push(buildSearchEntry({
       id: `workspace:${workspace.directory || 'root'}`,
       kind: 'workspace',
@@ -545,6 +773,8 @@ function renderSearchIndex(scanResult, output) {
         workspace.files.join(' '),
         workspace.modules.join(' '),
         workspace.languages.join(' '),
+        getWorkspaceApiContracts(scanResult, workspace.directory).map((endpoint) => `${endpoint.method} ${endpoint.path}`).join(' '),
+        workspaceDesign ? `${workspaceDesign.summary} ${workspaceDesign.topFlows.map((flow) => flow.name).join(' ')}` : '',
       ].join(' '),
       keywords: ['workspace', workspace.name, workspace.directory || 'root', ...workspace.languages],
       meta: {
@@ -568,6 +798,7 @@ function renderSearchIndex(scanResult, output) {
         file.relativePath,
         file.language,
         file.symbols.map((symbol) => `${symbol.kind} ${symbol.name} ${symbol.signature}`).join(' '),
+        Array.isArray(file.apiContracts) ? file.apiContracts.map((endpoint) => `${endpoint.method} ${endpoint.path} ${requestContractSummary(endpoint)} ${responseContractSummary(endpoint)}`).join(' ') : '',
         output.includeAiSections && file.ai && Array.isArray(file.ai.responsibilities) ? file.ai.responsibilities.join(' ') : '',
       ].join(' '),
       keywords: [
@@ -612,6 +843,22 @@ function workspacePagePath(directory) {
   }
 
   return path.join('workspaces', `${directory}.md`);
+}
+
+function designPageTitle(filePath) {
+  if (filePath === BASIC_DESIGN_FILE) {
+    return 'Basic Design';
+  }
+  if (filePath === DETAIL_DESIGN_FILE) {
+    return 'Detail Design';
+  }
+  if (filePath === API_CONTRACTS_FILE) {
+    return 'API Contracts';
+  }
+  if (filePath === FLOW_CATALOG_FILE) {
+    return 'Flow Catalog';
+  }
+  return 'Design Overview';
 }
 
 function relativeLink(fromPath, toPath) {
@@ -676,11 +923,140 @@ function resolveOutputOptions(output) {
   return {
     template: output && typeof output.template === 'string' ? output.template : 'detailed',
     themePreset: output && typeof output.themePreset === 'string' ? output.themePreset : 'clean',
+    flowDiagram: output && typeof output.flowDiagram === 'string' ? output.flowDiagram : 'flow',
     includeCodeBlocks: output && typeof output.includeCodeBlocks === 'boolean' ? output.includeCodeBlocks : DEFAULT_OUTPUT.includeCodeBlocks,
     includeAiSections: output && typeof output.includeAiSections === 'boolean' ? output.includeAiSections : DEFAULT_OUTPUT.includeAiSections,
     includeUsageNotes: output && typeof output.includeUsageNotes === 'boolean' ? output.includeUsageNotes : DEFAULT_OUTPUT.includeUsageNotes,
     highlightPublicApi: output && typeof output.highlightPublicApi === 'boolean' ? output.highlightPublicApi : DEFAULT_OUTPUT.highlightPublicApi,
   };
+}
+
+function shouldRenderFlowchart(output) {
+  return ['flow', 'both'].includes(output.flowDiagram);
+}
+
+function shouldRenderSequence(output) {
+  return ['sequence', 'both'].includes(output.flowDiagram);
+}
+
+function getApiContracts(scanResult) {
+  return scanResult.api && Array.isArray(scanResult.api.endpoints) ? scanResult.api.endpoints : [];
+}
+
+function getApiGroups(scanResult) {
+  return scanResult.api && Array.isArray(scanResult.api.groups) ? scanResult.api.groups : [];
+}
+
+function getModuleApiContracts(scanResult, directory) {
+  return getApiContracts(scanResult).filter((endpoint) => (
+    directory === ''
+      ? true
+      : endpoint.directory === directory || endpoint.directory.startsWith(`${directory}/`)
+  ));
+}
+
+function getWorkspaceApiContracts(scanResult, directory) {
+  return getApiContracts(scanResult).filter((endpoint) => (endpoint.workspace || '') === directory);
+}
+
+function requestContractSummary(endpoint) {
+  const request = endpoint.request || {};
+  return [
+    request.bodyKeys && request.bodyKeys.length > 0 ? `body ${request.bodyKeys.join(', ')}` : '',
+    request.queryKeys && request.queryKeys.length > 0 ? `query ${request.queryKeys.join(', ')}` : '',
+    request.paramKeys && request.paramKeys.length > 0 ? `params ${request.paramKeys.join(', ')}` : '',
+    request.headerKeys && request.headerKeys.length > 0 ? `headers ${request.headerKeys.join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+function responseContractSummary(endpoint) {
+  const responses = Array.isArray(endpoint.responses) ? endpoint.responses : [];
+  return responses
+    .map((response) => `${response.status}${response.bodyKeys && response.bodyKeys.length > 0 ? `: ${response.bodyKeys.join(', ')}` : ''}`)
+    .join(' · ');
+}
+
+function renderApiRequestSection(lines, endpoint, heading = '#### Request Contract') {
+  const request = endpoint.request || {};
+  lines.push('', heading, '');
+  if (
+    (!request.bodyKeys || request.bodyKeys.length === 0)
+    && (!request.queryKeys || request.queryKeys.length === 0)
+    && (!request.paramKeys || request.paramKeys.length === 0)
+    && (!request.headerKeys || request.headerKeys.length === 0)
+    && (!request.bodySchemas || request.bodySchemas.length === 0)
+  ) {
+    lines.push('No request shape could be inferred from the handler code.');
+    return;
+  }
+
+  if (request.bodyKeys && request.bodyKeys.length > 0) {
+    lines.push(`- Body fields: ${request.bodyKeys.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+  }
+  if (request.queryKeys && request.queryKeys.length > 0) {
+    lines.push(`- Query fields: ${request.queryKeys.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+  }
+  if (request.paramKeys && request.paramKeys.length > 0) {
+    lines.push(`- Path params: ${request.paramKeys.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+  }
+  if (request.headerKeys && request.headerKeys.length > 0) {
+    lines.push(`- Headers: ${request.headerKeys.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+  }
+  if (request.bodySchemas && request.bodySchemas.length > 0) {
+    lines.push(`- Request schemas: ${request.bodySchemas.map((schema) => (
+      `${markdownFencedInlineCode(schema.name)} (${schema.source})${schema.fields && schema.fields.length > 0 ? ` -> ${schema.fields.map((field) => markdownFencedInlineCode(field)).join(', ')}` : ''}`
+    )).join('; ')}`);
+  }
+}
+
+function renderApiResponseSection(lines, endpoint, heading = '#### Response Contract') {
+  const responses = Array.isArray(endpoint.responses) ? endpoint.responses : [];
+  lines.push('', heading, '');
+  if (responses.length === 0 && (!endpoint.responseSchemas || endpoint.responseSchemas.length === 0)) {
+    lines.push('No response contract could be inferred from the handler code.');
+    return;
+  }
+
+  for (const response of responses) {
+    const summary = response.bodyKeys && response.bodyKeys.length > 0
+      ? response.bodyKeys.map((item) => markdownFencedInlineCode(item)).join(', ')
+      : 'no body fields inferred';
+    lines.push(`- ${markdownFencedInlineCode(`${response.status}`)} ${response.transport}: ${summary}`);
+  }
+  if (endpoint.responseSchemas && endpoint.responseSchemas.length > 0) {
+    lines.push(`- Response schemas: ${endpoint.responseSchemas.map((schema) => (
+      `${markdownFencedInlineCode(schema.name)} (${schema.source})${schema.fields && schema.fields.length > 0 ? ` -> ${schema.fields.map((field) => markdownFencedInlineCode(field)).join(', ')}` : ''}`
+    )).join('; ')}`);
+  }
+}
+
+function renderApiEndpoint(lines, endpoint, currentPath, endpointDesign, output, heading = '###') {
+  lines.push(`${heading} ${endpoint.method} ${escapeAngleBracketsForVueMarkdown(endpoint.path)}`);
+  lines.push('');
+  lines.push(`- File: [${endpoint.file}](${relativeLink(currentPath, filePagePath(endpoint.file))})`);
+  lines.push(`- Framework: ${markdownFencedInlineCode(endpoint.framework)}`);
+  lines.push(`- Operation ID: ${markdownFencedInlineCode(endpoint.operationId)}`);
+  if (endpoint.handler) {
+    lines.push(`- Handler: ${markdownFencedInlineCode(endpoint.handler)}`);
+  }
+  if (endpoint.line) {
+    lines.push(`- Declared around line: ${endpoint.line}`);
+  }
+  renderApiRequestSection(lines, endpoint);
+  renderApiResponseSection(lines, endpoint);
+  if (endpointDesign && Array.isArray(endpointDesign.steps) && endpointDesign.steps.length > 0) {
+    lines.push('', '#### Endpoint Steps', '');
+    for (const step of endpointDesign.steps) {
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(step)}`);
+    }
+  }
+  if (endpointDesign && shouldRenderFlowchart(output)) {
+    lines.push('', '#### Endpoint Flow Diagram', '', renderMermaidDiagram(endpointDesign.mermaid), '');
+  }
+  if (endpointDesign && shouldRenderSequence(output)) {
+    lines.push('', '#### Endpoint Sequence Diagram', '', renderMermaidDiagram(endpointDesign.sequenceMermaid), '');
+  }
+  lines.push('');
 }
 
 function renderLanguageBreakdown(scanResult) {
@@ -697,6 +1073,11 @@ function renderSummary(scanResult) {
     '# Summary',
     '',
     '- [Project Overview](index.md)',
+    '- [Design Overview](design/index.md)',
+    '- [Basic Design](design/basic-design.md)',
+    '- [Detail Design](design/detail-design.md)',
+    '- [API Contracts](design/api-contracts.md)',
+    '- [Flow Catalog](design/flows.md)',
     '- [Module Index](modules/index.md)',
     '- [Workspace Index](workspaces/index.md)',
   ];
@@ -756,6 +1137,11 @@ function renderIndex(scanResult, output) {
 
   lines.push('', '## Navigation', '');
   lines.push('- [Summary](SUMMARY.md)');
+  lines.push('- [Design Overview](design/index.md)');
+  lines.push('- [Basic Design](design/basic-design.md)');
+  lines.push('- [Detail Design](design/detail-design.md)');
+  lines.push('- [API Contracts](design/api-contracts.md)');
+  lines.push('- [Flow Catalog](design/flows.md)');
   lines.push('- [Module Index](modules/index.md)');
   lines.push('- [Workspace Index](workspaces/index.md)');
   lines.push(`- [Root Module](${toPosixPath(modulePagePath(''))})`);
@@ -803,11 +1189,18 @@ function renderIndex(scanResult, output) {
   lines.push('');
   const featureCards = [
     {
-      icon: 'MAP',
-      title: 'Structure Map',
-      details: `${formatCount(scanResult.totals.directories, 'module')} and ${formatCount(scanResult.totals.workspaces, 'workspace')} mapped into dedicated index pages.`,
-      link: '/modules/',
-      linkText: 'Browse modules',
+      icon: 'BDD',
+      title: 'Basic Design',
+      details: 'System intent, actors, primary capabilities, and context-level diagrams inferred from the codebase.',
+      link: '/design/basic-design',
+      linkText: 'Open BDD',
+    },
+    {
+      icon: 'DDD',
+      title: 'Detail Design',
+      details: 'Module responsibilities, internal runtime layers, and implementation-oriented flow breakdowns.',
+      link: '/design/detail-design',
+      linkText: 'Open DDD',
     },
     {
       icon: 'CODE',
@@ -817,11 +1210,18 @@ function renderIndex(scanResult, output) {
       linkText: 'Open summary',
     },
     {
-      icon: 'SEARCH',
-      title: 'Search Ready',
-      details: 'Local VitePress search is enabled, and docs-wiki also emits a portable JSON search index.',
-      link: '/workspaces/',
-      linkText: 'Explore workspaces',
+      icon: 'API',
+      title: 'API Contracts',
+      details: `${formatCount(getApiContracts(scanResult).length, 'endpoint')} inferred with request and response shapes from route handlers.`,
+      link: '/design/api-contracts',
+      linkText: 'Inspect contracts',
+    },
+    {
+      icon: 'FLOW',
+      title: 'Flow Diagrams',
+      details: 'Inferred request and business flows are rendered as Mermaid diagrams so the operational path is visible.',
+      link: '/design/flows',
+      linkText: 'Explore flows',
     },
     {
       icon: output.includeAiSections && scanResult.ai && scanResult.ai.enabled ? 'AI' : 'CFG',
@@ -866,6 +1266,278 @@ function renderIndex(scanResult, output) {
           ],
         },
         features: featureCards,
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderDesignIndex(scanResult) {
+  const design = getDesignModel(scanResult);
+  const lines = [
+    '# Design Overview',
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Summary: [SUMMARY](../SUMMARY.md)',
+    '- Basic design: [Basic Design](./basic-design.md)',
+    '- Detail design: [Detail Design](./detail-design.md)',
+    '- API contracts: [API Contracts](./api-contracts.md)',
+    '- Flow catalog: [Flow Catalog](./flows.md)',
+    '',
+    '## What This Layer Adds',
+    '',
+    '- Basic Design maps business intent, actors, main capabilities, and context-level boundaries.',
+    '- Detail Design maps runtime structure, module responsibilities, and implementation-level handoffs.',
+    '- API Contracts extracts HTTP endpoints, request fields, and response shapes from route handlers.',
+    '- Flow Catalog extracts request and business flows from folder structure, symbol names, AI file summaries, and import signals.',
+    '',
+    '## Dominant Capabilities',
+    '',
+  ];
+
+  for (const capability of design.project.basicDesign.capabilities || []) {
+    const target = capability.directory ? modulePagePath(capability.directory) : modulePagePath('');
+    lines.push(`- [${capability.title}](${relativeLink(DESIGN_INDEX_FILE, target)}) - ${escapeAngleBracketsForVueMarkdown(capability.summary)}`);
+  }
+
+  if ((design.project.flows || []).length > 0) {
+    lines.push('', '## Top Flows', '');
+    for (const flow of design.project.flows) {
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(flow.name)} - ${escapeAngleBracketsForVueMarkdown(flow.goal)}`);
+    }
+  }
+
+  lines.push('');
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Design Overview',
+      description: `Design-level wiki pages for ${scanResult.projectName}.`,
+      kind: 'design-index',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(DESIGN_INDEX_FILE),
+        moduleCount: scanResult.totals.directories,
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderBasicDesign(scanResult) {
+  const design = getDesignModel(scanResult);
+  const lines = [
+    '# Basic Design',
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Design overview: [Design Overview](./index.md)',
+    '- Detail design: [Detail Design](./detail-design.md)',
+    '- API contracts: [API Contracts](./api-contracts.md)',
+    '- Flow catalog: [Flow Catalog](./flows.md)',
+    '',
+    '## System Intent',
+    '',
+    escapeAngleBracketsForVueMarkdown(design.project.basicDesign.summary || `${scanResult.projectName} business context inferred from the scanned codebase.`),
+    '',
+    '## Actors',
+    '',
+    ...renderStringList(design.project.basicDesign.actors || []),
+    '',
+    '## Context Diagram',
+    '',
+    renderMermaidDiagram(design.project.basicDesign.diagram || 'flowchart LR\n  caller["Caller"] --> system["System"]'),
+    '',
+    '## Primary Capabilities',
+    '',
+  ];
+
+  for (const capability of design.project.basicDesign.capabilities || []) {
+    const target = capability.directory ? modulePagePath(capability.directory) : modulePagePath('');
+    lines.push(`### [${capability.title}](${relativeLink(BASIC_DESIGN_FILE, target)})`);
+    lines.push('');
+    lines.push(escapeAngleBracketsForVueMarkdown(capability.summary || 'Capability summary unavailable.'));
+    lines.push('');
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Basic Design',
+      description: `Basic design and context model for ${scanResult.projectName}.`,
+      kind: 'design',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(BASIC_DESIGN_FILE),
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderDetailDesign(scanResult) {
+  const design = getDesignModel(scanResult);
+  const lines = [
+    '# Detail Design',
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Design overview: [Design Overview](./index.md)',
+    '- Basic design: [Basic Design](./basic-design.md)',
+    '- API contracts: [API Contracts](./api-contracts.md)',
+    '- Flow catalog: [Flow Catalog](./flows.md)',
+    '',
+    '## Runtime View',
+    '',
+    escapeAngleBracketsForVueMarkdown(design.project.detailDesign.summary || `${scanResult.projectName} detail design inferred from runtime structure.`),
+    '',
+    '## Runtime Layers',
+    '',
+    ...renderStringList(design.project.detailDesign.runtimeLayers || []),
+    '',
+    '## Interaction Diagram',
+    '',
+    renderMermaidDiagram(design.project.detailDesign.diagram || 'flowchart LR\n  moduleA["Module A"] --> moduleB["Module B"]'),
+    '',
+  ];
+
+  if (Array.isArray(design.project.detailDesign.moduleInteractions) && design.project.detailDesign.moduleInteractions.length > 0) {
+    lines.push('## Module Interaction Graph', '');
+    for (const interaction of design.project.detailDesign.moduleInteractions) {
+      lines.push(`- ${markdownFencedInlineCode(interaction.from || '(root)')} -> ${markdownFencedInlineCode(interaction.to || '(root)')} (${interaction.weight} dependencies)`);
+    }
+    lines.push('');
+  }
+
+  lines.push(
+    '## Module Responsibilities',
+    '',
+  );
+
+  for (const module of design.project.detailDesign.modules || []) {
+    const target = module.directory ? modulePagePath(module.directory) : modulePagePath('');
+    lines.push(`### [${module.title}](${relativeLink(DETAIL_DESIGN_FILE, target)})`);
+    lines.push('');
+    lines.push(`- Basic design: ${escapeAngleBracketsForVueMarkdown(module.basicDesign || 'n/a')}`);
+    lines.push(`- Detail design: ${escapeAngleBracketsForVueMarkdown(module.detailDesign || 'n/a')}`);
+    lines.push('');
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Detail Design',
+      description: `Detail design and implementation shape for ${scanResult.projectName}.`,
+      kind: 'design',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(DETAIL_DESIGN_FILE),
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderApiContracts(scanResult, output) {
+  const endpoints = getApiContracts(scanResult);
+  const groups = getApiGroups(scanResult);
+  const lines = [
+    '# API Contracts',
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Design overview: [Design Overview](./index.md)',
+    '- Basic design: [Basic Design](./basic-design.md)',
+    '- Detail design: [Detail Design](./detail-design.md)',
+    '- Flow catalog: [Flow Catalog](./flows.md)',
+    '',
+    '## Endpoint Summary',
+    '',
+  ];
+
+  if (endpoints.length === 0) {
+    lines.push('No HTTP endpoints could be inferred from the current codebase.');
+  } else {
+    for (const group of groups) {
+      const groupEndpoints = endpoints.filter((endpoint) => endpoint.group === group.group);
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(group.title)}: ${formatCount(groupEndpoints.length, 'endpoint')}`);
+    }
+
+    for (const group of groups) {
+      const groupEndpoints = endpoints.filter((endpoint) => endpoint.group === group.group);
+      lines.push('', `## ${escapeAngleBracketsForVueMarkdown(group.title)}`, '');
+      for (const endpoint of groupEndpoints) {
+        const moduleLink = relativeLink(API_CONTRACTS_FILE, modulePagePath(endpoint.directory || ''));
+        lines.push(`- Module: [${endpoint.directory || '(root)'}](${moduleLink})`);
+        lines.push(`- Source: [${endpoint.file}](${relativeLink(API_CONTRACTS_FILE, filePagePath(endpoint.file))})`);
+        renderApiEndpoint(lines, endpoint, API_CONTRACTS_FILE, getApiEndpointDesign(scanResult, endpoint.id), output);
+      }
+    }
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'API Contracts',
+      description: `Inferred HTTP request and response contracts for ${scanResult.projectName}.`,
+      kind: 'design',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(API_CONTRACTS_FILE),
+        endpointCount: endpoints.length,
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderFlowCatalog(scanResult, output) {
+  const design = getDesignModel(scanResult);
+  const flows = design.project.flows || [];
+  const showFlowchart = shouldRenderFlowchart(output);
+  const showSequence = shouldRenderSequence(output);
+  const lines = [
+    '# Flow Catalog',
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Design overview: [Design Overview](./index.md)',
+    '- Basic design: [Basic Design](./basic-design.md)',
+    '- Detail design: [Detail Design](./detail-design.md)',
+    '- API contracts: [API Contracts](./api-contracts.md)',
+    '',
+    '## Inferred Flows',
+    '',
+  ];
+
+  if (flows.length === 0) {
+    lines.push('No business or request flow could be inferred from the current codebase.');
+  } else {
+    for (const flow of flows) {
+      lines.push(`### ${escapeAngleBracketsForVueMarkdown(flow.name)}`);
+      lines.push('');
+      lines.push(escapeAngleBracketsForVueMarkdown(flow.goal));
+      lines.push('');
+      lines.push('#### Steps', '');
+      for (const step of flow.steps || []) {
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(step)}`);
+      }
+
+      if (showFlowchart) {
+        lines.push('', '#### Flow Diagram', '', renderMermaidDiagram(flow.mermaid), '');
+      }
+
+      if (showSequence && flow.sequenceMermaid) {
+        lines.push('', '#### Sequence Diagram', '', renderMermaidDiagram(flow.sequenceMermaid), '');
+      }
+    }
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Flow Catalog',
+      description: `Inferred business flows for ${scanResult.projectName}.`,
+      kind: 'design',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(FLOW_CATALOG_FILE),
       },
     }),
     lines.join('\n'),
@@ -943,6 +1615,8 @@ function renderWorkspaceIndex(scanResult) {
 function renderModulePage(scanResult, module, output) {
   const currentPath = modulePagePath(module.directory);
   const workspace = getWorkspaceForModule(scanResult, module.directory);
+  const moduleDesign = getModuleDesign(scanResult, module.directory);
+  const moduleApiContracts = getModuleApiContracts(scanResult, module.directory);
   const lines = [
     `# Module ${module.directory || '(root)'}`,
     '',
@@ -965,6 +1639,74 @@ function renderModulePage(scanResult, module, output) {
   const reason = output.includeAiSections ? getKeyModuleReason(scanResult, module.directory) : null;
   if (reason) {
     lines.push('', '## Why It Matters', '', escapeAngleBracketsForVueMarkdown(reason));
+  }
+
+  if (moduleDesign) {
+    lines.push('', '## Business Capability', '', escapeAngleBracketsForVueMarkdown(moduleDesign.capability));
+    lines.push('', '## Basic Design', '', escapeAngleBracketsForVueMarkdown(moduleDesign.basicDesign));
+
+    if (moduleDesign.entryPoints.length > 0 || moduleDesign.dataStores.length > 0 || moduleDesign.integrations.length > 0) {
+      lines.push('', '### Boundaries', '');
+      if (moduleDesign.actors && moduleDesign.actors.length > 0) {
+        lines.push(`- Actors: ${moduleDesign.actors.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ')}`);
+      }
+      if (moduleDesign.entryPoints.length > 0) {
+        lines.push(`- Entry points: ${moduleDesign.entryPoints.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+      }
+      if (moduleDesign.dataStores.length > 0) {
+        lines.push(`- Data stores: ${moduleDesign.dataStores.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ')}`);
+      }
+      if (moduleDesign.integrations.length > 0) {
+        lines.push(`- External interfaces: ${moduleDesign.integrations.map((item) => markdownFencedInlineCode(item)).join(', ')}`);
+      }
+    }
+
+    lines.push('', '## Detail Design', '', escapeAngleBracketsForVueMarkdown(moduleDesign.detailDesign));
+    if (moduleDesign.components.length > 0) {
+      lines.push('', '### Components', '');
+      for (const component of moduleDesign.components) {
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(component)}`);
+      }
+    }
+
+    if (moduleDesign.interactions.length > 0) {
+      lines.push('', '## Module Interactions', '');
+      for (const interaction of moduleDesign.interactions) {
+        const from = interaction.from || '(root)';
+        const to = interaction.to || '(root)';
+        lines.push(`- ${markdownFencedInlineCode(from)} -> ${markdownFencedInlineCode(to)} (${interaction.weight} dependencies)`);
+      }
+      lines.push('', '### Interaction Diagram', '', renderModuleInteractionDiagram(moduleDesign.interactions), '');
+    }
+
+    if (moduleDesign.flows.length > 0) {
+      const showFlowchart = shouldRenderFlowchart(output);
+      const showSequence = shouldRenderSequence(output);
+      lines.push('', '## Inferred Business Flows', '');
+      for (const flow of moduleDesign.flows) {
+        lines.push(`### ${escapeAngleBracketsForVueMarkdown(flow.name)}`);
+        lines.push('');
+        lines.push(escapeAngleBracketsForVueMarkdown(flow.goal));
+        lines.push('');
+        lines.push('#### Steps', '');
+        for (const step of flow.steps) {
+          lines.push(`- ${escapeAngleBracketsForVueMarkdown(step)}`);
+        }
+        if (showFlowchart) {
+          lines.push('', '#### Flow Diagram', '', renderMermaidDiagram(flow.mermaid), '');
+        }
+        if (showSequence && flow.sequenceMermaid) {
+          lines.push('', '#### Sequence Diagram', '', renderMermaidDiagram(flow.sequenceMermaid), '');
+        }
+      }
+    }
+  }
+
+  if (moduleApiContracts.length > 0) {
+    lines.push('', '## API Contracts', '');
+    for (const endpoint of moduleApiContracts) {
+      renderApiEndpoint(lines, endpoint, currentPath, getApiEndpointDesign(scanResult, endpoint.id), output);
+    }
   }
 
   lines.push('', '## Child Modules', '');
@@ -1014,6 +1756,8 @@ function renderModulePage(scanResult, module, output) {
 
 function renderWorkspacePage(scanResult, workspace, output) {
   const currentPath = workspacePagePath(workspace.directory);
+  const workspaceDesign = getWorkspaceDesign(scanResult, workspace.directory);
+  const workspaceApiContracts = getWorkspaceApiContracts(scanResult, workspace.directory);
   const lines = [
     `# Workspace ${workspace.name}`,
     '',
@@ -1036,6 +1780,30 @@ function renderWorkspacePage(scanResult, workspace, output) {
   }
   if (workspace.description) {
     lines.push('', '## Description', '', workspace.description);
+  }
+
+  if (workspaceDesign) {
+    lines.push('', '## Basic Design', '', escapeAngleBracketsForVueMarkdown(workspaceDesign.summary));
+    if (workspaceDesign.topFlows.length > 0) {
+      lines.push('', '## Flow Highlights', '');
+      for (const flow of workspaceDesign.topFlows) {
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(flow.name)} - ${escapeAngleBracketsForVueMarkdown(flow.goal)}`);
+      }
+    }
+    if (workspaceDesign.interactions.length > 0) {
+      lines.push('', '## Module Interaction Graph', '');
+      for (const interaction of workspaceDesign.interactions) {
+        lines.push(`- ${markdownFencedInlineCode(interaction.from || '(root)')} -> ${markdownFencedInlineCode(interaction.to || '(root)')} (${interaction.weight} dependencies)`);
+      }
+      lines.push('', renderModuleInteractionDiagram(workspaceDesign.interactions), '');
+    }
+  }
+
+  if (workspaceApiContracts.length > 0) {
+    lines.push('', '## API Surface', '');
+    for (const endpoint of workspaceApiContracts) {
+      renderApiEndpoint(lines, endpoint, currentPath, getApiEndpointDesign(scanResult, endpoint.id), output);
+    }
   }
 
   lines.push('', '## Modules', '');
@@ -1136,6 +1904,13 @@ function renderFilePage(scanResult, file, output) {
           lines.push(`- ${markdownFencedInlineCode(sig)}${esc ? ` — ${esc}` : ''}`);
         }
       }
+    }
+  }
+
+  if (Array.isArray(file.apiContracts) && file.apiContracts.length > 0) {
+    lines.push('', '## API Contracts', '');
+    for (const endpoint of file.apiContracts) {
+      renderApiEndpoint(lines, endpoint, currentPath, getApiEndpointDesign(scanResult, endpoint.id), output);
     }
   }
 
@@ -1250,7 +2025,7 @@ function renderVitePressSchema() {
           schemaVersion: { type: 'string' },
           kind: {
             type: 'string',
-            enum: ['summary', 'overview', 'module-index', 'workspace-index', 'module', 'workspace', 'file'],
+            enum: ['summary', 'overview', 'design-index', 'design', 'module-index', 'workspace-index', 'module', 'workspace', 'file'],
           },
           project: { type: 'string' },
           template: { type: 'string' },
@@ -1326,7 +2101,9 @@ async function writeDocs(scanResult, options = {}) {
 
   await ensureDir(outputRoot);
   await ensureDir(path.join(outputRoot, '.vitepress'));
+  await ensureDir(path.join(outputRoot, '.vitepress', 'theme'));
   await ensureDir(path.join(outputRoot, 'public'));
+  await ensureDir(path.join(outputRoot, 'design'));
   await ensureDir(path.join(outputRoot, 'files'));
   await ensureDir(path.join(outputRoot, 'modules'));
   await ensureDir(path.join(outputRoot, 'workspaces'));
@@ -1367,7 +2144,7 @@ async function writeDocs(scanResult, options = {}) {
   const moduleWriteCount = scanResult.directories.filter((module) => changedModuleSet.has(module.directory)).length;
   const workspaceWriteCount = scanResult.workspaces.filter((workspace) => changedWorkspaceSet.has(workspace.directory)).length;
   const fileWriteCount = scanResult.files.filter((file) => changedFileSet.has(file.relativePath)).length;
-  const writeTotal = 9 + moduleWriteCount + workspaceWriteCount + fileWriteCount;
+  const writeTotal = 15 + moduleWriteCount + workspaceWriteCount + fileWriteCount;
   let writeStep = 0;
 
   function tickWrite(detail) {
@@ -1384,10 +2161,22 @@ async function writeDocs(scanResult, options = {}) {
   tickWrite('SUMMARY.md');
   await writeFileIfChanged(path.join(outputRoot, 'index.md'), renderIndex(scanResult, output));
   tickWrite('index.md');
+  await writeFileIfChanged(path.join(outputRoot, DESIGN_INDEX_FILE), renderDesignIndex(scanResult));
+  tickWrite('design/index.md');
+  await writeFileIfChanged(path.join(outputRoot, BASIC_DESIGN_FILE), renderBasicDesign(scanResult));
+  tickWrite('design/basic-design.md');
+  await writeFileIfChanged(path.join(outputRoot, DETAIL_DESIGN_FILE), renderDetailDesign(scanResult));
+  tickWrite('design/detail-design.md');
+  await writeFileIfChanged(path.join(outputRoot, API_CONTRACTS_FILE), renderApiContracts(scanResult, output));
+  tickWrite('design/api-contracts.md');
+  await writeFileIfChanged(path.join(outputRoot, FLOW_CATALOG_FILE), renderFlowCatalog(scanResult, output));
+  tickWrite('design/flows.md');
   await writeFileIfChanged(path.join(outputRoot, 'manifest.json'), JSON.stringify(scanResult, null, 2));
   tickWrite('manifest.json');
   await writeFileIfChanged(path.join(outputRoot, VITEPRESS_CONFIG_FILE), renderVitePressConfig(scanResult));
   tickWrite('.vitepress/config.mjs');
+  await writeFileIfChanged(path.join(outputRoot, VITEPRESS_THEME_FILE), renderVitePressThemeEntry());
+  tickWrite('.vitepress/theme/index.mjs');
   await writeFileIfChanged(path.join(outputRoot, VITEPRESS_SCHEMA_FILE), renderVitePressSchema());
   tickWrite('vitepress.schema.json');
   await writeFileIfChanged(path.join(outputRoot, SEARCH_INDEX_FILE), renderSearchIndex(scanResult, output));

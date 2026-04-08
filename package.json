@@ -28,6 +28,7 @@
   "dependencies": {
     "chokidar": "^4.0.3",
     "fast-glob": "^3.3.3",
+    "mermaid": "^11.14.0",
     "openai": "^6.33.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-go": "^0.21.2",

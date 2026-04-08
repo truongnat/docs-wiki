@@ -1,7 +1,8 @@
 const path = require('node:path');
 const { enrichWithAi, DEFAULT_AI_MODEL } = require('./ai');
-const { loadUserConfig, resolveOptions, DEFAULT_THEME_PRESET, THEME_PRESETS } = require('./config');
+const { loadUserConfig, resolveOptions, DEFAULT_THEME_PRESET, THEME_PRESETS, FLOW_DIAGRAM_MODES, DEFAULT_FLOW_DIAGRAM_MODE } = require('./config');
 const { scaffoldDeploy } = require('./deploy');
+const { enrichWithDesign } = require('./design');
 const { scanProject } = require('./scanner');
 const { writeDocs } = require('./generator');
 const { ensureVitePressRuntimeDeps, runVitePress, spawnVitePress } = require('./vitepress');
@@ -36,6 +37,7 @@ Options:
   --overwrite           Allow deploy scaffold commands to overwrite existing files.
   --template <name>     Output template: basic, detailed, api-first.
   --theme-preset <name> VitePress theme preset: ${THEME_PRESETS.join(', ')}. Defaults to ${DEFAULT_THEME_PRESET}.
+  --flow-diagram <name> Flow-diagram mode for inferred flows: ${FLOW_DIAGRAM_MODES.join(', ')}. Defaults to ${DEFAULT_FLOW_DIAGRAM_MODE}.
   --max-files <n>       Limit the number of files scanned. Useful for smoke tests.
   --ai                  Enable AI-generated summaries.
   --no-ai               Disable AI summaries even if config enables them.
@@ -62,6 +64,7 @@ function parseArgs(argv) {
     outDir: undefined,
     template: undefined,
     themePreset: undefined,
+    flowDiagram: undefined,
     maxFiles: undefined,
     ai: undefined,
     aiProvider: undefined,
@@ -181,6 +184,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (current === '--flow-diagram') {
+      options.flowDiagram = argv[index + 1] || undefined;
+      index += 1;
+      continue;
+    }
+
     if (current === '--max-files') {
       const raw = Number(argv[index + 1]);
       if (!Number.isFinite(raw) || raw <= 0) {
@@ -275,6 +284,7 @@ function printResult(result, options, cliOpts = {}) {
   console.log(`Mode:    ${result.incremental.mode}`);
   console.log(`Template: ${options.output.template}`);
   console.log(`Theme:   ${options.output.themePreset}`);
+  console.log(`Flow diagrams: ${options.output.flowDiagram}`);
 
   if (options.config.loaded) {
     console.log(`Config:  ${options.config.path}`);
@@ -286,7 +296,8 @@ function printResult(result, options, cliOpts = {}) {
   }
 
   if (result.ai && result.ai.enabled) {
-    console.log(`AI:      ${result.ai.provider}/${result.ai.model} (${result.ai.summarizedFiles}/${result.totals.filesParsed} file summaries)`);
+    const moduleCount = Array.isArray(result.ai.modules) ? result.ai.modules.filter((entry) => entry && entry.capability).length : 0;
+    console.log(`AI:      ${result.ai.provider}/${result.ai.model} (${result.ai.summarizedFiles}/${result.totals.filesParsed} file summaries, ${moduleCount}/${result.totals.directories} module summaries)`);
   }
 
   const errorCount = result.errors.length + (result.ai && Array.isArray(result.ai.errors) ? result.ai.errors.length : 0);
@@ -445,12 +456,15 @@ async function build(cliOptions, buildMeta = {}) {
     ollamaApiKey: options.ai.ollamaApiKey,
     reasoningEffort: options.ai.reasoningEffort,
     filePrompt: options.ai.filePrompt,
+    modulePrompt: options.ai.modulePrompt,
     projectPrompt: options.ai.projectPrompt,
     previousManifest,
     onProgress: ai,
   });
 
-  await writeDocs(enrichedResult, {
+  const designedResult = enrichWithDesign(enrichedResult);
+
+  await writeDocs(designedResult, {
     previousManifest,
     output: options.output,
     onProgress: write,
@@ -458,7 +472,7 @@ async function build(cliOptions, buildMeta = {}) {
 
   return {
     options,
-    result: enrichedResult,
+    result: designedResult,
   };
 }
 

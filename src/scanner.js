@@ -12,13 +12,23 @@ const DEFAULT_IGNORES = [
   '**/coverage/**',
   '**/.next/**',
   '**/.turbo/**',
+  '**/.cache/**',
+  '**/.parcel-cache/**',
+  '**/.vite/**',
   '**/.venv/**',
   '**/venv/**',
   '**/__pycache__/**',
   '**/target/**',
   '**/.idea/**',
   '**/.vscode/**',
+  '**/.dart_tool/**',
+  '**/ios/Pods/**',
+  '**/ios/.symlinks/**',
+  '**/android/.gradle/**',
+  '**/android/app/build/**',
 ];
+
+const SUPPORTED_EXTENSIONS = new Set(Object.keys(LANGUAGE_CONFIGS));
 
 function supportedExtensions() {
   return Object.keys(LANGUAGE_CONFIGS).sort();
@@ -42,7 +52,7 @@ async function discoverFiles(rootDir, outDir, maxFiles = Infinity, includePatter
   const entries = await fg(buildPatterns(includePatterns), {
     cwd: rootDir,
     onlyFiles: true,
-    dot: false,
+    dot: true,
     unique: true,
     absolute: false,
     followSymbolicLinks: false,
@@ -70,12 +80,53 @@ async function createPackageMetadata(rootDir) {
     }));
 }
 
+/**
+ * Lists extensions present under root that Tree-sitter does not parse (for --verbose hints).
+ * Uses a broad glob; only runs when explicitly requested.
+ */
+async function computeUnindexedExtensionStats(rootDir, outDir, customIgnores = []) {
+  const normalizedOutDir = normalizeOutDir(outDir);
+  const entries = await fg(['**/*'], {
+    cwd: rootDir,
+    onlyFiles: true,
+    dot: true,
+    unique: true,
+    absolute: false,
+    followSymbolicLinks: false,
+    ignore: normalizedOutDir ? [...DEFAULT_IGNORES, ...customIgnores, `${normalizedOutDir}/**`] : [...DEFAULT_IGNORES, ...customIgnores],
+  });
+
+  const counts = new Map();
+  let unindexedFileCount = 0;
+
+  for (const relativePath of entries) {
+    const ext = path.extname(relativePath).toLowerCase();
+    if (!ext) {
+      continue;
+    }
+    if (SUPPORTED_EXTENSIONS.has(ext)) {
+      continue;
+    }
+    unindexedFileCount += 1;
+    counts.set(ext, (counts.get(ext) || 0) + 1);
+  }
+
+  const otherExtensions = Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 36);
+
+  return {
+    unindexedFileCount,
+    otherExtensions,
+  };
+}
+
 async function discoverWorkspacePackages(rootDir, outDir, customIgnores = []) {
   const normalizedOutDir = normalizeOutDir(outDir);
   const packageFiles = await fg(['package.json', '**/package.json'], {
     cwd: rootDir,
     onlyFiles: true,
-    dot: false,
+    dot: true,
     unique: true,
     absolute: false,
     followSymbolicLinks: false,
@@ -288,6 +339,23 @@ function parseFileFromSource(rootDir, relativePath, source) {
     return null;
   }
 
+  const lineCount = source === '' ? 0 : source.split(/\r?\n/).length;
+
+  if (config.plainText) {
+    const symbols = config.extractSymbols(null, source);
+    return {
+      relativePath,
+      absolutePath: path.join(rootDir, relativePath),
+      directory: path.dirname(relativePath) === '.' ? '' : path.dirname(relativePath).split(path.sep).join('/'),
+      extension,
+      language: config.label,
+      codeFence: config.codeFence,
+      lineCount,
+      hash: hashText(source),
+      symbols,
+    };
+  }
+
   const parser = createParser(extension);
   const tree = parser.parse(source);
   const symbols = config.extractSymbols(tree.rootNode, source);
@@ -299,7 +367,7 @@ function parseFileFromSource(rootDir, relativePath, source) {
     extension,
     language: config.label,
     codeFence: config.codeFence,
-    lineCount: source === '' ? 0 : source.split(/\r?\n/).length,
+    lineCount,
     hash: hashText(source),
     symbols,
   };
@@ -308,7 +376,9 @@ function parseFileFromSource(rootDir, relativePath, source) {
 async function scanProject(rootDir, options = {}) {
   const outDir = options.outDir || 'docs-wiki';
   const maxFiles = Number.isFinite(options.maxFiles) ? options.maxFiles : Infinity;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const previousManifest = options.incremental ? await readPreviousManifest(rootDir, outDir) : null;
+  onProgress?.({ type: 'discover_start' });
   const workspacePackages = await discoverWorkspacePackages(rootDir, outDir, options.ignore);
   const canReuseScan = Boolean(previousManifest && previousManifest.cache && previousManifest.cache.scanKey === options.cache.scanKey);
   const previousByPath = new Map(
@@ -318,12 +388,21 @@ async function scanProject(rootDir, options = {}) {
   );
 
   const files = await discoverFiles(rootDir, outDir, maxFiles, options.include, options.ignore);
+  onProgress?.({ type: 'discover_done', count: files.length });
   const scannedFiles = [];
   const errors = [];
   const changedFiles = [];
   const reusedFiles = [];
 
-  for (const relativePath of files) {
+  const totalToRead = files.length;
+  for (let index = 0; index < files.length; index += 1) {
+    const relativePath = files[index];
+    onProgress?.({
+      type: 'parse_progress',
+      current: index + 1,
+      total: totalToRead,
+      file: relativePath,
+    });
     const absolutePath = path.join(rootDir, relativePath);
 
     try {
@@ -350,6 +429,12 @@ async function scanProject(rootDir, options = {}) {
       });
     }
   }
+
+  onProgress?.({
+    type: 'parse_done',
+    parsed: scannedFiles.length,
+    discovered: files.length,
+  });
 
   const currentFileSet = new Set(scannedFiles.map((file) => file.relativePath));
   const deletedFiles = canReuseScan
@@ -397,6 +482,11 @@ async function scanProject(rootDir, options = {}) {
         .filter((directory) => !currentWorkspaceSet.has(directory))
     : [];
 
+  let discoveryHints = null;
+  if (options.scanDiagnostics) {
+    discoveryHints = await computeUnindexedExtensionStats(rootDir, outDir, options.ignore);
+  }
+
   const scanResult = {
     rootDir,
     outDir,
@@ -411,6 +501,7 @@ async function scanProject(rootDir, options = {}) {
     workspaces: workspaceSummary,
     languages: createLanguageBreakdown(scannedFiles),
     errors,
+    discoveryHints,
     incremental: {
       enabled: Boolean(options.incremental),
       mode: canReuseScan ? 'incremental' : 'full',
@@ -443,4 +534,5 @@ async function scanProject(rootDir, options = {}) {
 
 module.exports = {
   scanProject,
+  computeUnindexedExtensionStats,
 };

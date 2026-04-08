@@ -71,11 +71,24 @@ npx docs-wiki ../my-project --out-dir wiki
 
 ## Supported Languages
 
+**Tree-sitter (symbols + structure):**
+
 - JavaScript: `.js`, `.cjs`, `.mjs`, `.jsx`
 - TypeScript: `.ts`, `.tsx`
 - Python: `.py`
 - Go: `.go`
 - Rust: `.rs`
+
+**Plain-text index (one page per file, full source in a fenced block — no AST symbols yet):**
+
+- **Dart / Flutter:** `.dart` (app and package code; pair with `.yaml` / `.yml` for `pubspec.yaml`)
+- Web UI: `.vue`, `.svelte`, `.css`, `.scss`, `.less`
+- Config / data: `.json`, `.yaml`, `.yml`
+- Mobile / JVM-style sources (indexed as text): `.swift`, `.kt`, `.kts`, `.java`
+
+Flutter/Dart repos also skip common generated paths (`.dart_tool/`, `ios/Pods/`, Android `.gradle` caches) during discovery.
+
+> A native Dart Tree-sitter grammar is not wired in yet (ABI mismatch with the current `tree-sitter` runtime). When that is resolved, `.dart` can move to full symbol extraction like TypeScript.
 
 ## Output
 

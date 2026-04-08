@@ -534,6 +534,9 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     };
   }
 
+  const onProgress = typeof rawOptions.onProgress === 'function' ? rawOptions.onProgress : null;
+  onProgress?.({ type: 'ai_resolve' });
+
   const providerInfo = await resolveAiProvider(options, rawOptions.dependencies);
   const client = providerInfo.client;
   const sourceChanged = new Set(scanResult.incremental.changedFiles);
@@ -549,6 +552,8 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
   const errors = [];
   const aiChangedFiles = [];
   let reusedAiFiles = 0;
+  const aiTotalSteps = scanResult.files.length + 1;
+  let aiStep = 0;
 
   for (const file of scanResult.files) {
     const previous = previousByPath.get(file.relativePath);
@@ -559,6 +564,15 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
       && previous.ai
       && !sourceChanged.has(file.relativePath),
     );
+
+    aiStep += 1;
+    onProgress?.({
+      type: 'ai_progress',
+      current: aiStep,
+      total: aiTotalSteps,
+      file: file.relativePath,
+      mode: canReuseFileAi ? 'cached' : 'summarize',
+    });
 
     if (canReuseFileAi) {
       files.push({
@@ -609,8 +623,22 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
 
   if (canReuseAi && previousManifest.ai && previousManifest.ai.project && sourceChanged.size === 0 && aiChangedFiles.length === 0) {
     project = previousManifest.ai.project;
+    onProgress?.({
+      type: 'ai_progress',
+      current: aiTotalSteps,
+      total: aiTotalSteps,
+      file: '(project overview)',
+      mode: 'cached',
+    });
   } else {
     try {
+      onProgress?.({
+        type: 'ai_progress',
+        current: aiTotalSteps,
+        total: aiTotalSteps,
+        file: '(project overview)',
+        mode: 'summarize',
+      });
       const interimResult = {
         ...scanResult,
         files,

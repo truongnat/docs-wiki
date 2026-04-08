@@ -336,6 +336,29 @@ function extractRust(rootNode, source) {
   return symbols;
 }
 
+const MAX_PLAIN_TEXT_BYTES = 480 * 1024;
+
+function truncatePlainSource(source) {
+  if (source.length <= MAX_PLAIN_TEXT_BYTES) {
+    return source;
+  }
+  return `${source.slice(0, MAX_PLAIN_TEXT_BYTES)}\n\n/* … truncated by docs-wiki (${source.length} characters total) */`;
+}
+
+function extractPlainTextFile(_rootNode, source) {
+  const body = truncatePlainSource(source);
+  const lines = body.split(/\r?\n/);
+  return [{
+    kind: 'source',
+    name: '(file)',
+    signature: `Plain-text index (${lines.length} line${lines.length === 1 ? '' : 's'})`,
+    exported: true,
+    code: body,
+    startLine: 1,
+    endLine: Math.max(1, lines.length),
+  }];
+}
+
 const LANGUAGE_CONFIGS = {
   '.js': {
     label: 'JavaScript',
@@ -391,11 +414,89 @@ const LANGUAGE_CONFIGS = {
     codeFence: 'rust',
     extractSymbols: extractRust,
   },
+  '.vue': {
+    label: 'Vue',
+    plainText: true,
+    codeFence: 'vue',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.svelte': {
+    label: 'Svelte',
+    plainText: true,
+    codeFence: 'svelte',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.css': {
+    label: 'CSS',
+    plainText: true,
+    codeFence: 'css',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.scss': {
+    label: 'SCSS',
+    plainText: true,
+    codeFence: 'scss',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.less': {
+    label: 'Less',
+    plainText: true,
+    codeFence: 'less',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.json': {
+    label: 'JSON',
+    plainText: true,
+    codeFence: 'json',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.yaml': {
+    label: 'YAML',
+    plainText: true,
+    codeFence: 'yaml',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.yml': {
+    label: 'YAML',
+    plainText: true,
+    codeFence: 'yaml',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.swift': {
+    label: 'Swift',
+    plainText: true,
+    codeFence: 'swift',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.kt': {
+    label: 'Kotlin',
+    plainText: true,
+    codeFence: 'kotlin',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.kts': {
+    label: 'Kotlin',
+    plainText: true,
+    codeFence: 'kotlin',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.dart': {
+    label: 'Dart (Flutter)',
+    plainText: true,
+    codeFence: 'dart',
+    extractSymbols: extractPlainTextFile,
+  },
+  '.java': {
+    label: 'Java',
+    plainText: true,
+    codeFence: 'java',
+    extractSymbols: extractPlainTextFile,
+  },
 };
 
 function createParser(extension) {
   const config = LANGUAGE_CONFIGS[extension];
-  if (!config) {
+  if (!config || config.plainText) {
     return null;
   }
 

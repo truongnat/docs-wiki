@@ -13,6 +13,9 @@ const WATCH_IGNORES = [
   `${path.sep}venv${path.sep}`,
   `${path.sep}__pycache__${path.sep}`,
   `${path.sep}target${path.sep}`,
+  `${path.sep}.dart_tool${path.sep}`,
+  `${path.sep}Pods${path.sep}`,
+  `${path.sep}.gradle${path.sep}`,
 ];
 
 function shouldIgnorePath(watchedPath, rootDir, outDir) {

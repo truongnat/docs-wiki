@@ -5,6 +5,7 @@ const { scaffoldDeploy } = require('./deploy');
 const { scanProject } = require('./scanner');
 const { writeDocs } = require('./generator');
 const { ensureVitePressRuntimeDeps, runVitePress, spawnVitePress } = require('./vitepress');
+const { printBanner, createRunProgress } = require('./ui');
 
 function printHelp() {
   console.log(`docs-wiki
@@ -47,6 +48,8 @@ Options:
   --no-watch            Disable watch mode.
   --incremental         Reuse the previous manifest and only rewrite changed pages when possible.
   --no-incremental      Disable incremental reuse.
+  --verbose, -v         Progress on stderr plus a report of non-indexed file extensions after the scan.
+  --no-progress         Disable banner and progress UI (for CI or logs).
   --help                Show this help message.
 `);
 }
@@ -75,6 +78,8 @@ function parseArgs(argv) {
     deployTarget: undefined,
     deployBranch: undefined,
     overwrite: false,
+    verbose: false,
+    progress: undefined,
   };
 
   const commandNames = new Set(['serve', 'dev', 'preview', 'build-site', 'init-deploy']);
@@ -240,6 +245,16 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (current === '--verbose' || current === '-v') {
+      options.verbose = true;
+      continue;
+    }
+
+    if (current === '--no-progress') {
+      options.progress = false;
+      continue;
+    }
+
     if (current.startsWith('--')) {
       throw new Error(`Unknown option: ${current}`);
     }
@@ -250,7 +265,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function printResult(result, options) {
+function printResult(result, options, cliOpts = {}) {
   console.log(`Scanned: ${result.rootDir}`);
   console.log(`Output:  ${path.resolve(result.rootDir, result.outDir)}`);
   console.log(`Files:   ${result.totals.filesParsed}/${result.totals.filesDiscovered}`);
@@ -278,6 +293,99 @@ function printResult(result, options) {
   if (errorCount > 0) {
     console.log(`Errors:  ${errorCount}`);
   }
+
+  if (cliOpts.verbose && result.discoveryHints && result.discoveryHints.unindexedFileCount > 0) {
+    console.log('');
+    console.log('Other files in the repo use extensions docs-wiki does not parse yet:');
+    const top = result.discoveryHints.otherExtensions.slice(0, 18).map(([ext, n]) => `${ext}×${n}`);
+    console.log(`  ${top.join(', ')}${result.discoveryHints.otherExtensions.length > 18 ? ' …' : ''}`);
+    console.log('  Tip: Tree-sitter symbols: .js/.cjs/.mjs/.jsx/.ts/.tsx/.py/.go/.rs. Plain-text index (full file): .vue/.dart/.svelte/.css/.scss/.json/.yaml/.swift/.kt/.java, etc.');
+  }
+}
+
+function createProgressBridge(useProgress) {
+  const ui = createRunProgress({ enabled: useProgress });
+  let aiHandshake = false;
+
+  function scan(evt) {
+    if (!useProgress || !evt) {
+      return;
+    }
+    switch (evt.type) {
+      case 'discover_start':
+        ui.phaseStart('Discovering source files');
+        break;
+      case 'discover_done':
+        ui.phaseEnd();
+        ui.info(`Matched ${evt.count} source file(s).`);
+        break;
+      case 'parse_progress':
+        if (evt.current === 1) {
+          ui.phaseStart('Tree-sitter parse');
+        }
+        ui.phaseProgress({
+          current: evt.current,
+          total: evt.total,
+          detail: evt.file,
+        });
+        break;
+      case 'parse_done':
+        ui.phaseEnd();
+        if (evt.discovered === 0) {
+          ui.info('No files matched supported extensions (.ts, .js, .py, .go, .rs, …).');
+        } else if (evt.parsed < evt.discovered) {
+          ui.info(`Indexed ${evt.parsed}/${evt.discovered} file(s); others failed to read or parse.`);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  function ai(evt) {
+    if (!useProgress || !evt) {
+      return;
+    }
+    if (evt.type === 'ai_resolve') {
+      aiHandshake = false;
+      ui.phaseStart('AI provider');
+      return;
+    }
+    if (evt.type === 'ai_progress') {
+      if (!aiHandshake) {
+        ui.phaseEnd();
+        ui.phaseStart('AI summaries');
+        aiHandshake = true;
+      }
+      ui.phaseProgress({
+        current: evt.current,
+        total: evt.total,
+        detail: `${evt.mode === 'cached' ? 'reuse ' : ''}${evt.file}`,
+      });
+      if (evt.current === evt.total) {
+        ui.phaseEnd();
+      }
+    }
+  }
+
+  function write(evt) {
+    if (!useProgress || !evt || evt.type !== 'write_progress') {
+      return;
+    }
+    if (evt.current === 1) {
+      ui.phaseStart('Writing documentation');
+    }
+    ui.phaseProgress({
+      current: evt.current,
+      total: evt.total,
+      detail: evt.detail,
+    });
+    if (evt.current === evt.total) {
+      ui.phaseEnd();
+    }
+  }
+
+  return { scan, ai, write };
 }
 
 function waitForChildExit(child, label) {
@@ -299,9 +407,20 @@ function waitForChildExit(child, label) {
   });
 }
 
-async function build(cliOptions) {
+async function build(cliOptions, buildMeta = {}) {
+  const { showBanner = true } = buildMeta;
+  const useProgress = cliOptions.progress !== false && process.stderr.isTTY;
+  const verbose = Boolean(cliOptions.verbose);
+
   const loadedConfig = await loadUserConfig(cliOptions.root, cliOptions.configPath);
   const options = resolveOptions(cliOptions.root, cliOptions, loadedConfig);
+
+  if (showBanner && useProgress) {
+    printBanner();
+  }
+
+  const { scan, ai, write } = createProgressBridge(useProgress);
+
   const { scanResult, previousManifest } = await scanProject(options.root, {
     outDir: options.outDir,
     maxFiles: options.maxFiles,
@@ -310,6 +429,8 @@ async function build(cliOptions) {
     incremental: options.incremental,
     cache: options.cache,
     settings: options.settings,
+    onProgress: scan,
+    scanDiagnostics: verbose,
   });
 
   const enrichedResult = await enrichWithAi(scanResult, {
@@ -326,11 +447,13 @@ async function build(cliOptions) {
     filePrompt: options.ai.filePrompt,
     projectPrompt: options.ai.projectPrompt,
     previousManifest,
+    onProgress: ai,
   });
 
   await writeDocs(enrichedResult, {
     previousManifest,
     output: options.output,
+    onProgress: write,
   });
 
   return {
@@ -350,8 +473,8 @@ async function runCli(argv) {
     return;
   }
 
-  const initial = await build(cliOptions);
-  printResult(initial.result, initial.options);
+  const initial = await build(cliOptions, { showBanner: true });
+  printResult(initial.result, initial.options, cliOptions);
 
   const siteRoot = path.resolve(initial.result.rootDir, initial.result.outDir);
   const vitePressOptions = {
@@ -402,8 +525,8 @@ async function runCli(argv) {
         rootDir: initial.options.root,
         outDir: initial.options.outDir,
         build: async () => {
-          const next = await build(cliOptions);
-          printResult(next.result, next.options);
+          const next = await build(cliOptions, { showBanner: false });
+          printResult(next.result, next.options, cliOptions);
         },
       });
       return;
@@ -419,8 +542,8 @@ async function runCli(argv) {
       rootDir: initial.options.root,
       outDir: initial.options.outDir,
       build: async () => {
-        const next = await build(cliOptions);
-        printResult(next.result, next.options);
+        const next = await build(cliOptions, { showBanner: false });
+        printResult(next.result, next.options, cliOptions);
       },
     });
   }

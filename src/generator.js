@@ -1,6 +1,11 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { DEFAULT_OUTPUT } = require('./config');
+const {
+  escapeAngleBracketsForVueMarkdown,
+  markdownFencedInlineCode,
+  createFence,
+} = require('./markdownSafe');
 
 const VITEPRESS_SCHEMA_VERSION = '1.0.0';
 const VITEPRESS_SCHEMA_FILE = 'vitepress.schema.json';
@@ -70,11 +75,6 @@ const THEME_STYLE_PRESETS = {
     darkHeroNameBackground: 'linear-gradient(120deg, #bfdbfe 10%, #38bdf8 55%, #2dd4bf 100%)',
   },
 };
-
-function createFence(code, language) {
-  const fence = code.includes('```') ? '````' : '```';
-  return `${fence}${language}\n${code}\n${fence}`;
-}
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
@@ -733,7 +733,7 @@ function renderIndex(scanResult, output) {
   const lines = [];
 
   if (output.includeAiSections && scanResult.ai && scanResult.ai.project && scanResult.ai.project.overview) {
-    lines.push('## Overview', '', scanResult.ai.project.overview, '');
+    lines.push('## Overview', '', escapeAngleBracketsForVueMarkdown(scanResult.ai.project.overview), '');
   }
 
   lines.push('## Snapshot', '');
@@ -771,7 +771,7 @@ function renderIndex(scanResult, output) {
     const reason = output.includeAiSections ? getKeyModuleReason(scanResult, module.directory) : null;
     lines.push(`- [${title}](${toPosixPath(modulePagePath(module.directory))}) - ${formatCount(module.fileCount, 'file')}, ${formatCount(module.symbolCount, 'symbol')}`);
     if (reason) {
-      lines.push(`  - ${reason}`);
+      lines.push(`  - ${escapeAngleBracketsForVueMarkdown(reason)}`);
     }
   }
 
@@ -784,18 +784,18 @@ function renderIndex(scanResult, output) {
   if (output.includeAiSections && scanResult.ai && scanResult.ai.project && Array.isArray(scanResult.ai.project.architecture) && scanResult.ai.project.architecture.length > 0) {
     lines.push('', '## Architecture Notes', '');
     for (const item of scanResult.ai.project.architecture) {
-      lines.push(`- ${item}`);
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(item)}`);
     }
   }
 
   if (scanResult.errors.length > 0 || (scanResult.ai && Array.isArray(scanResult.ai.errors) && scanResult.ai.errors.length > 0)) {
     lines.push('', '## Errors', '');
     for (const entry of scanResult.errors) {
-      lines.push(`- Parse: \`${entry.relativePath}\` - ${entry.message}`);
+      lines.push(`- Parse: ${markdownFencedInlineCode(entry.relativePath)} - ${escapeAngleBracketsForVueMarkdown(entry.message)}`);
     }
     if (scanResult.ai) {
       for (const entry of scanResult.ai.errors) {
-        lines.push(`- AI: \`${entry.scope}\` - ${entry.message}`);
+        lines.push(`- AI: ${markdownFencedInlineCode(entry.scope)} - ${escapeAngleBracketsForVueMarkdown(entry.message)}`);
       }
     }
   }
@@ -857,7 +857,7 @@ function renderIndex(scanResult, output) {
         hero: {
           name: scanResult.projectName,
           text: scanResult.package && scanResult.package.description
-            ? scanResult.package.description
+            ? escapeAngleBracketsForVueMarkdown(scanResult.package.description)
             : 'Generated internal docs wiki',
           tagline: `${formatCount(scanResult.totals.filesParsed, 'file')} · ${formatCount(scanResult.totals.symbols, 'symbol')} · ${formatCount(scanResult.totals.directories, 'module')} · theme ${output.themePreset}`,
           actions: [
@@ -964,7 +964,7 @@ function renderModulePage(scanResult, module, output) {
 
   const reason = output.includeAiSections ? getKeyModuleReason(scanResult, module.directory) : null;
   if (reason) {
-    lines.push('', '## Why It Matters', '', reason);
+    lines.push('', '## Why It Matters', '', escapeAngleBracketsForVueMarkdown(reason));
   }
 
   lines.push('', '## Child Modules', '');
@@ -984,7 +984,9 @@ function renderModulePage(scanResult, module, output) {
   } else {
     for (const relativePath of module.directFiles) {
       const file = getFileByPath(scanResult, relativePath);
-      const summary = output.includeAiSections && file && file.ai && file.ai.summary ? ` - ${file.ai.summary}` : '';
+      const summary = output.includeAiSections && file && file.ai && file.ai.summary
+        ? ` — ${escapeAngleBracketsForVueMarkdown(file.ai.summary)}`
+        : '';
       lines.push(`- [${relativePath}](${relativeLink(currentPath, filePagePath(relativePath))})${summary}`);
     }
   }
@@ -1053,7 +1055,9 @@ function renderWorkspacePage(scanResult, workspace, output) {
   lines.push('', '## Files', '');
   for (const relativePath of workspace.files) {
     const file = getFileByPath(scanResult, relativePath);
-    const summary = output.includeAiSections && file && file.ai && file.ai.summary ? ` - ${file.ai.summary}` : '';
+    const summary = output.includeAiSections && file && file.ai && file.ai.summary
+      ? ` — ${escapeAngleBracketsForVueMarkdown(file.ai.summary)}`
+      : '';
     lines.push(`- [${relativePath}](${relativeLink(currentPath, filePagePath(relativePath))})${summary}`);
   }
 
@@ -1098,19 +1102,19 @@ function renderFilePage(scanResult, file, output) {
   ];
 
   if (output.includeAiSections && file.ai && file.ai.summary) {
-    lines.push('', '## AI Summary', '', file.ai.summary);
+    lines.push('', '## AI Summary', '', escapeAngleBracketsForVueMarkdown(file.ai.summary));
 
     if (Array.isArray(file.ai.responsibilities) && file.ai.responsibilities.length > 0) {
       lines.push('', '### Responsibilities', '');
       for (const item of file.ai.responsibilities) {
-        lines.push(`- ${item}`);
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(item)}`);
       }
     }
 
     if (output.includeUsageNotes && Array.isArray(file.ai.usageNotes) && file.ai.usageNotes.length > 0) {
       lines.push('', '### Usage Notes', '');
       for (const item of file.ai.usageNotes) {
-        lines.push(`- ${item}`);
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(item)}`);
       }
     }
   }
@@ -1121,7 +1125,16 @@ function renderFilePage(scanResult, file, output) {
       lines.push('', '## Public API', '');
       for (const symbol of publicSymbols) {
         const symbolSummary = output.includeAiSections ? getSymbolSummary(file, symbol) : '';
-        lines.push(`- \`${symbol.signature}\`${symbolSummary ? ` - ${symbolSummary}` : ''}`);
+        const esc = symbolSummary ? escapeAngleBracketsForVueMarkdown(symbolSummary) : '';
+        const sig = String(symbol.signature);
+        if (sig.includes('\n') || sig.length > 200) {
+          lines.push(`- ${markdownFencedInlineCode(symbol.name)}${esc ? ` — ${esc}` : ''}`);
+          lines.push('');
+          lines.push(createFence(sig, file.codeFence));
+          lines.push('');
+        } else {
+          lines.push(`- ${markdownFencedInlineCode(sig)}${esc ? ` — ${esc}` : ''}`);
+        }
       }
     }
   }
@@ -1136,13 +1149,20 @@ function renderFilePage(scanResult, file, output) {
   } else {
     for (const symbol of symbols) {
       const symbolSummary = output.includeAiSections ? getSymbolSummary(file, symbol) : '';
-      lines.push(`### ${symbol.kind} \`${symbol.name}\``);
+      lines.push(`### ${symbol.kind} ${markdownFencedInlineCode(symbol.name)}`);
       lines.push('');
-      lines.push(`- Signature: \`${symbol.signature}\``);
+      const sig = String(symbol.signature);
+      if (sig.includes('\n') || sig.length > 200) {
+        lines.push('- Signature:');
+        lines.push('');
+        lines.push(createFence(sig, file.codeFence));
+      } else {
+        lines.push(`- Signature: ${markdownFencedInlineCode(sig)}`);
+      }
       lines.push(`- Lines: ${symbol.startLine}-${symbol.endLine}`);
       lines.push(`- Exported: ${symbol.exported ? 'yes' : 'no'}`);
       if (symbolSummary) {
-        lines.push(`- Summary: ${symbolSummary}`);
+        lines.push(`- Summary: ${escapeAngleBracketsForVueMarkdown(symbolSummary)}`);
       }
       lines.push('');
       if (output.includeCodeBlocks) {
@@ -1296,6 +1316,7 @@ async function writeDocs(scanResult, options = {}) {
   const outputRoot = path.resolve(scanResult.rootDir, scanResult.outDir);
   const output = resolveOutputOptions(options.output);
   const previousManifest = options.previousManifest || null;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const partialRender = Boolean(
     scanResult.incremental.enabled
     && previousManifest
@@ -1333,16 +1354,6 @@ async function writeDocs(scanResult, options = {}) {
     }
   }
 
-  await writeFileIfChanged(path.join(outputRoot, 'SUMMARY.md'), renderSummary(scanResult));
-  await writeFileIfChanged(path.join(outputRoot, 'index.md'), renderIndex(scanResult, output));
-  await writeFileIfChanged(path.join(outputRoot, 'manifest.json'), JSON.stringify(scanResult, null, 2));
-  await writeFileIfChanged(path.join(outputRoot, VITEPRESS_CONFIG_FILE), renderVitePressConfig(scanResult));
-  await writeFileIfChanged(path.join(outputRoot, VITEPRESS_SCHEMA_FILE), renderVitePressSchema());
-  await writeFileIfChanged(path.join(outputRoot, SEARCH_INDEX_FILE), renderSearchIndex(scanResult, output));
-  await writeFileIfChanged(path.join(outputRoot, THEME_STYLES_FILE), renderThemeStyles(output));
-  await writeFileIfChanged(path.join(outputRoot, 'modules', 'index.md'), renderModuleIndex(scanResult));
-  await writeFileIfChanged(path.join(outputRoot, 'workspaces', 'index.md'), renderWorkspaceIndex(scanResult));
-
   const changedFileSet = partialRender
     ? new Set([...scanResult.incremental.changedFiles, ...scanResult.incremental.aiChangedFiles])
     : new Set(scanResult.files.map((file) => file.relativePath));
@@ -1353,12 +1364,48 @@ async function writeDocs(scanResult, options = {}) {
     ? new Set([...scanResult.incremental.changedWorkspaces, ...scanResult.incremental.aiChangedWorkspaces])
     : new Set(scanResult.workspaces.map((entry) => entry.directory));
 
+  const moduleWriteCount = scanResult.directories.filter((module) => changedModuleSet.has(module.directory)).length;
+  const workspaceWriteCount = scanResult.workspaces.filter((workspace) => changedWorkspaceSet.has(workspace.directory)).length;
+  const fileWriteCount = scanResult.files.filter((file) => changedFileSet.has(file.relativePath)).length;
+  const writeTotal = 9 + moduleWriteCount + workspaceWriteCount + fileWriteCount;
+  let writeStep = 0;
+
+  function tickWrite(detail) {
+    writeStep += 1;
+    onProgress?.({
+      type: 'write_progress',
+      current: writeStep,
+      total: writeTotal,
+      detail,
+    });
+  }
+
+  await writeFileIfChanged(path.join(outputRoot, 'SUMMARY.md'), renderSummary(scanResult));
+  tickWrite('SUMMARY.md');
+  await writeFileIfChanged(path.join(outputRoot, 'index.md'), renderIndex(scanResult, output));
+  tickWrite('index.md');
+  await writeFileIfChanged(path.join(outputRoot, 'manifest.json'), JSON.stringify(scanResult, null, 2));
+  tickWrite('manifest.json');
+  await writeFileIfChanged(path.join(outputRoot, VITEPRESS_CONFIG_FILE), renderVitePressConfig(scanResult));
+  tickWrite('.vitepress/config.mjs');
+  await writeFileIfChanged(path.join(outputRoot, VITEPRESS_SCHEMA_FILE), renderVitePressSchema());
+  tickWrite('vitepress.schema.json');
+  await writeFileIfChanged(path.join(outputRoot, SEARCH_INDEX_FILE), renderSearchIndex(scanResult, output));
+  tickWrite('search-index.json');
+  await writeFileIfChanged(path.join(outputRoot, THEME_STYLES_FILE), renderThemeStyles(output));
+  tickWrite('public/docs-wiki.css');
+  await writeFileIfChanged(path.join(outputRoot, 'modules', 'index.md'), renderModuleIndex(scanResult));
+  tickWrite('modules/index.md');
+  await writeFileIfChanged(path.join(outputRoot, 'workspaces', 'index.md'), renderWorkspaceIndex(scanResult));
+  tickWrite('workspaces/index.md');
+
   for (const module of scanResult.directories) {
     if (!changedModuleSet.has(module.directory)) {
       continue;
     }
     const outputPath = path.join(outputRoot, modulePagePath(module.directory));
     await writeFileIfChanged(outputPath, renderModulePage(scanResult, module, output));
+    tickWrite(`modules/${module.directory || 'root'}.md`);
   }
 
   for (const workspace of scanResult.workspaces) {
@@ -1367,6 +1414,7 @@ async function writeDocs(scanResult, options = {}) {
     }
     const outputPath = path.join(outputRoot, workspacePagePath(workspace.directory));
     await writeFileIfChanged(outputPath, renderWorkspacePage(scanResult, workspace, output));
+    tickWrite(`workspaces/${workspace.directory || 'root'}.md`);
   }
 
   for (const file of scanResult.files) {
@@ -1375,6 +1423,7 @@ async function writeDocs(scanResult, options = {}) {
     }
     const outputPath = path.join(outputRoot, filePagePath(file.relativePath));
     await writeFileIfChanged(outputPath, renderFilePage(scanResult, file, output));
+    tickWrite(file.relativePath);
   }
 
   return outputRoot;

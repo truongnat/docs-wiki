@@ -266,6 +266,45 @@ test('docs-wiki respects docs-wiki.config.json for ignore patterns and output st
   assert.match(themeCssText, /--vp-c-brand-1: #c2410c/);
 });
 
+test('docs-wiki indexes .dart files as Dart (Flutter) plain-text pages', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-dart-'));
+  const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
+
+  await fs.writeFile(path.join(tempDir, 'pubspec.yaml'), 'name: sample_app\nversion: 0.0.1\n', 'utf8');
+  await fs.mkdir(path.join(tempDir, 'lib'), { recursive: true });
+  await fs.writeFile(path.join(tempDir, 'lib', 'main.dart'), 'void main() {\n  // fixture\n}\n', 'utf8');
+
+  await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
+
+  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  const dart = manifest.files.find((f) => f.relativePath === 'lib/main.dart');
+  assert.ok(dart, 'expected lib/main.dart in manifest');
+  assert.equal(dart.language, 'Dart (Flutter)');
+  assert.ok(Array.isArray(dart.symbols) && dart.symbols.length >= 1);
+});
+
+test('docs-wiki discovers source files under hidden directories (dot segments)', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-dot-'));
+  const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
+
+  await fs.writeFile(
+    path.join(tempDir, 'package.json'),
+    JSON.stringify({ name: 'dot-app', version: '1.0.0' }, null, 2),
+    'utf8',
+  );
+  await fs.mkdir(path.join(tempDir, '.config'), { recursive: true });
+  await fs.writeFile(
+    path.join(tempDir, '.config', 'routes.ts'),
+    'export const routes: string[] = [];\n',
+    'utf8',
+  );
+
+  await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
+
+  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  assert.ok(manifest.files.some((f) => f.relativePath === '.config/routes.ts'));
+});
+
 test('docs-wiki incremental mode rewrites only changed file pages when content changes', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');

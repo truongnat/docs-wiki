@@ -294,6 +294,7 @@ test('docs-wiki scans the cwd and writes summary, feature, reference, and file d
   const schemaPath = path.join(tempDir, 'docs-wiki', 'vitepress.schema.json');
   const searchIndexPath = path.join(tempDir, 'docs-wiki', 'search-index.json');
   const themeCssPath = path.join(tempDir, 'docs-wiki', 'public', 'docs-wiki.css');
+  const mermaidScriptPath = path.join(tempDir, 'docs-wiki', 'public', 'mermaid.min.js');
   const moduleIndexPath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'index.md');
   const workspaceIndexPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'index.md');
   const workspaceRootPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'root.md');
@@ -305,7 +306,7 @@ test('docs-wiki scans the cwd and writes summary, feature, reference, and file d
   const nestedFilePagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'utils', 'format.ts.md');
   const legacyFilePagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md');
 
-  const [summaryMarkdown, indexMarkdown, featureIndexMarkdown, referenceIndexMarkdown, designIndexMarkdown, basicDesignMarkdown, detailDesignMarkdown, flowCatalogMarkdown, vitePressConfigText, vitePressThemeText, schemaText, searchIndexText, themeCssText, moduleIndexMarkdown, workspaceIndexMarkdown, workspaceRootMarkdown, rootModuleMarkdown, srcModuleMarkdown, nestedModuleMarkdown, legacyModuleMarkdown, fileMarkdown, nestedFileMarkdown, legacyFileMarkdown] = await Promise.all([
+  const [summaryMarkdown, indexMarkdown, featureIndexMarkdown, referenceIndexMarkdown, designIndexMarkdown, basicDesignMarkdown, detailDesignMarkdown, flowCatalogMarkdown, vitePressConfigText, vitePressThemeText, schemaText, searchIndexText, themeCssText, mermaidScriptText, moduleIndexMarkdown, workspaceIndexMarkdown, workspaceRootMarkdown, rootModuleMarkdown, srcModuleMarkdown, nestedModuleMarkdown, legacyModuleMarkdown, fileMarkdown, nestedFileMarkdown, legacyFileMarkdown] = await Promise.all([
     fs.readFile(summaryPath, 'utf8'),
     fs.readFile(indexPath, 'utf8'),
     fs.readFile(featureIndexPath, 'utf8'),
@@ -319,6 +320,7 @@ test('docs-wiki scans the cwd and writes summary, feature, reference, and file d
     fs.readFile(schemaPath, 'utf8'),
     fs.readFile(searchIndexPath, 'utf8'),
     fs.readFile(themeCssPath, 'utf8'),
+    fs.readFile(mermaidScriptPath, 'utf8'),
     fs.readFile(moduleIndexPath, 'utf8'),
     fs.readFile(workspaceIndexPath, 'utf8'),
     fs.readFile(workspaceRootPath, 'utf8'),
@@ -378,11 +380,13 @@ test('docs-wiki scans the cwd and writes summary, feature, reference, and file d
   assert.ok(searchIndex.entries.some((entry) => entry.kind === 'file' && entry.title === 'src/index.ts'));
   assert.match(themeCssText, /--vp-c-brand-1/);
   assert.match(vitePressThemeText, /renderMermaidDiagrams/);
-  assert.match(vitePressThemeText, /import\("mermaid"\)/);
+  assert.match(vitePressThemeText, /mermaid\.min\.js/);
+  assert.doesNotMatch(vitePressThemeText, /import\("mermaid"\)/);
   assert.match(themeCssText, /--vp-home-hero-name-background/);
   assert.match(themeCssText, /\.docs-wiki--overview \.VPFeature/);
   assert.match(themeCssText, /\.docs-wiki-mermaid/);
   assert.match(themeCssText, /\.docs-wiki--file \.vp-doc h3::before/);
+  assert.match(mermaidScriptText, /mermaid/);
   assert.match(moduleIndexMarkdown, /# Module Index/);
   assert.match(workspaceIndexMarkdown, /# Workspace Index/);
   assert.match(workspaceRootMarkdown, /# Workspace fixture-app/);
@@ -908,4 +912,45 @@ test('docs-wiki incremental mode rewrites only changed file pages when content c
   assert.equal(manifest.incremental.mode, 'incremental');
   assert.deepEqual(manifest.incremental.changedFiles, ['src/utils/format.ts']);
   assert.ok(manifest.incremental.reusedFiles.includes('src/index.ts'));
+});
+
+test('docs-wiki encodes bracketed file routes so VitePress does not treat them as dynamic pages', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-brackets-'));
+  const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
+
+  await fs.writeFile(
+    path.join(tempDir, 'package.json'),
+    JSON.stringify({ name: 'bracket-app', version: '1.0.0' }, null, 2),
+    'utf8',
+  );
+  await fs.mkdir(path.join(tempDir, 'mobile', 'app', 'memory'), { recursive: true });
+  await fs.writeFile(
+    path.join(tempDir, 'mobile', 'app', 'memory', '[id].tsx'),
+    [
+      'export default function MemoryDetail() {',
+      '  return null;',
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+
+  await execFileAsync(process.execPath, [binPath, '--root', tempDir, 'build-site']);
+
+  const referenceDir = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'mobile', 'app', 'memory');
+  const legacyDir = path.join(tempDir, 'docs-wiki', 'files', 'mobile', 'app', 'memory');
+  const distDir = path.join(tempDir, 'docs-wiki', '.vitepress', 'dist', 'reference', 'files', 'mobile', 'app', 'memory');
+
+  const referenceFiles = await fs.readdir(referenceDir);
+  const legacyFiles = await fs.readdir(legacyDir);
+  const distFiles = await fs.readdir(distDir);
+
+  assert.equal(referenceFiles.length, 1);
+  assert.equal(legacyFiles.length, 1);
+  assert.equal(distFiles.length, 1);
+  assert.doesNotMatch(referenceFiles[0], /\[id\]/);
+  assert.doesNotMatch(legacyFiles[0], /\[id\]/);
+  assert.doesNotMatch(distFiles[0], /\[id\]/);
+  assert.match(referenceFiles[0], /param-id/);
+  assert.match(legacyFiles[0], /param-id/);
+  assert.match(distFiles[0], /param-id/);
 });

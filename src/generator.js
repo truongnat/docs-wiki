@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { DEFAULT_OUTPUT } = require('./config');
+const { hashText } = require('./hash');
 const {
   escapeAngleBracketsForVueMarkdown,
   markdownFencedInlineCode,
@@ -13,6 +14,7 @@ const VITEPRESS_CONFIG_FILE = path.join('.vitepress', 'config.mjs');
 const VITEPRESS_THEME_FILE = path.join('.vitepress', 'theme', 'index.mjs');
 const SEARCH_INDEX_FILE = 'search-index.json';
 const THEME_STYLES_FILE = path.join('public', 'docs-wiki.css');
+const MERMAID_BROWSER_SCRIPT_FILE = path.join('public', 'mermaid.min.js');
 const FEATURES_INDEX_FILE = path.join('features', 'index.md');
 const DESIGN_INDEX_FILE = path.join('design', 'index.md');
 const BASIC_DESIGN_FILE = path.join('design', 'basic-design.md');
@@ -89,6 +91,35 @@ const THEME_STYLE_PRESETS = {
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
+}
+
+function encodeRouteSegment(segment) {
+  const value = String(segment || '');
+  const extension = path.posix.extname(value);
+  const base = extension ? value.slice(0, -extension.length) : value;
+  let safeBase = base
+    .replace(/\[\.\.\.(.+?)\]/g, 'splat-$1')
+    .replace(/\[(.+?)\]/g, 'param-$1')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!safeBase) {
+    safeBase = 'page';
+  }
+
+  if (safeBase !== base) {
+    safeBase = `${safeBase}--${hashText(value).slice(0, 8)}`;
+  }
+
+  return `${safeBase}${extension}`;
+}
+
+function encodeRoutePath(value) {
+  return toPosixPath(String(value || ''))
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeRouteSegment(segment));
 }
 
 function normalizeText(value) {
@@ -544,20 +575,60 @@ function renderVitePressThemeEntry() {
     "import { useRoute } from 'vitepress';",
     '',
     'let mermaidInstance = null;',
+    'let mermaidLoadPromise = null;',
+    '',
+    'async function loadMermaidInstance() {',
+    '  if (mermaidInstance) {',
+    '    return mermaidInstance;',
+    '  }',
+    '',
+    '  if (typeof window === "undefined" || typeof document === "undefined") {',
+    '    return null;',
+    '  }',
+    '',
+    '  if (!mermaidLoadPromise) {',
+    '    mermaidLoadPromise = new Promise((resolve, reject) => {',
+    '      if (window.mermaid) {',
+    '        resolve(window.mermaid);',
+    '        return;',
+    '      }',
+    '',
+    '      const base = (window.__VP_SITE_DATA__ && window.__VP_SITE_DATA__.base) ? window.__VP_SITE_DATA__.base : "/";',
+    '      const normalizedBase = base.endsWith("/") ? base : `${base}/`;',
+    '      const script = document.createElement("script");',
+    '      script.src = `${normalizedBase}mermaid.min.js`;',
+    '      script.async = true;',
+    '      script.onload = () => {',
+    '        if (window.mermaid) {',
+    '          resolve(window.mermaid);',
+    '          return;',
+    '        }',
+    '        reject(new Error("Mermaid loaded without exposing window.mermaid."));',
+    '      };',
+    '      script.onerror = () => reject(new Error(`Failed to load ${script.src}`));',
+    '      document.head.appendChild(script);',
+    '    }).then((instance) => {',
+    '      mermaidInstance = instance;',
+    '      mermaidInstance.initialize({',
+    '        startOnLoad: false,',
+    '        securityLevel: "loose",',
+    '        theme: document.documentElement.classList.contains("dark") ? "dark" : "default",',
+    '      });',
+    '      return mermaidInstance;',
+    '    });',
+    '  }',
+    '',
+    '  return mermaidLoadPromise;',
+    '}',
     '',
     'async function renderMermaidDiagrams() {',
     '  if (typeof document === "undefined" || typeof window === "undefined") {',
     '    return;',
     '  }',
     '',
-    '  if (!mermaidInstance) {',
-    '    const module = await import("mermaid");',
-    '    mermaidInstance = module.default;',
-    '    mermaidInstance.initialize({',
-    '      startOnLoad: false,',
-    '      securityLevel: "loose",',
-    '      theme: document.documentElement.classList.contains("dark") ? "dark" : "default",',
-    '    });',
+    '  const mermaid = await loadMermaidInstance();',
+    '  if (!mermaid) {',
+    '    return;',
     '  }',
     '',
     '  const blocks = Array.from(document.querySelectorAll("pre code.language-mermaid"));',
@@ -574,7 +645,7 @@ function renderVitePressThemeEntry() {
     '    const id = `docs-wiki-mermaid-${Math.random().toString(36).slice(2)}`;',
     '',
     '    try {',
-    '      const { svg, bindFunctions } = await mermaidInstance.render(id, source);',
+    '      const { svg, bindFunctions } = await mermaid.render(id, source);',
     '      wrapper.innerHTML = svg;',
       '      bindFunctions?.(wrapper);',
     '      pre.replaceWith(wrapper);',
@@ -914,15 +985,25 @@ function renderSearchIndex(scanResult, output) {
 }
 
 function featurePagePath(slug) {
-  return path.join('features', `${slug}.md`);
+  return path.join('features', `${encodeRouteSegment(slug)}.md`);
 }
 
 function legacyFilePagePath(relativePath) {
-  return path.join('files', `${relativePath}.md`);
+  const encoded = encodeRoutePath(relativePath);
+  if (encoded.length === 0) {
+    return path.join('files', 'root.md');
+  }
+  const fileName = encoded[encoded.length - 1];
+  return path.join('files', ...encoded.slice(0, -1), `${fileName}.md`);
 }
 
 function filePagePath(relativePath) {
-  return path.join(REFERENCE_FILE_ROOT, `${relativePath}.md`);
+  const encoded = encodeRoutePath(relativePath);
+  if (encoded.length === 0) {
+    return path.join(REFERENCE_FILE_ROOT, 'root.md');
+  }
+  const fileName = encoded[encoded.length - 1];
+  return path.join(REFERENCE_FILE_ROOT, ...encoded.slice(0, -1), `${fileName}.md`);
 }
 
 function legacyModulePagePath(directory) {
@@ -930,7 +1011,9 @@ function legacyModulePagePath(directory) {
     return path.join('modules', 'root.md');
   }
 
-  return path.join('modules', `${directory}.md`);
+  const encoded = encodeRoutePath(directory);
+  const name = encoded[encoded.length - 1];
+  return path.join('modules', ...encoded.slice(0, -1), `${name}.md`);
 }
 
 function modulePagePath(directory) {
@@ -938,7 +1021,9 @@ function modulePagePath(directory) {
     return path.join(REFERENCE_MODULE_ROOT, 'root.md');
   }
 
-  return path.join(REFERENCE_MODULE_ROOT, `${directory}.md`);
+  const encoded = encodeRoutePath(directory);
+  const name = encoded[encoded.length - 1];
+  return path.join(REFERENCE_MODULE_ROOT, ...encoded.slice(0, -1), `${name}.md`);
 }
 
 function workspacePagePath(directory) {
@@ -946,7 +1031,9 @@ function workspacePagePath(directory) {
     return path.join('workspaces', 'root.md');
   }
 
-  return path.join('workspaces', `${directory}.md`);
+  const encoded = encodeRoutePath(directory);
+  const name = encoded[encoded.length - 1];
+  return path.join('workspaces', ...encoded.slice(0, -1), `${name}.md`);
 }
 
 function designPageTitle(filePath) {
@@ -2547,6 +2634,12 @@ async function writeFileIfChanged(target, content) {
   return true;
 }
 
+async function loadBundledMermaidBrowserScript() {
+  const packageJsonPath = require.resolve('mermaid/package.json');
+  const packageRoot = path.dirname(packageJsonPath);
+  return fs.readFile(path.join(packageRoot, 'dist', 'mermaid.min.js'), 'utf8');
+}
+
 async function removeFileIfExists(target) {
   try {
     await fs.unlink(target);
@@ -2629,7 +2722,7 @@ async function writeDocs(scanResult, options = {}) {
   const workspaceWriteCount = scanResult.workspaces.filter((workspace) => changedWorkspaceSet.has(workspace.directory)).length;
   const fileWriteCount = scanResult.files.filter((file) => changedFileSet.has(file.relativePath)).length;
   const featureWriteCount = getFeatures(scanResult).length;
-  const writeTotal = 18 + featureWriteCount + moduleWriteCount + workspaceWriteCount + (fileWriteCount * 2);
+  const writeTotal = 19 + featureWriteCount + moduleWriteCount + workspaceWriteCount + (fileWriteCount * 2);
   let writeStep = 0;
 
   function tickWrite(detail) {
@@ -2664,6 +2757,8 @@ async function writeDocs(scanResult, options = {}) {
   tickWrite('.vitepress/config.mjs');
   await writeFileIfChanged(path.join(outputRoot, VITEPRESS_THEME_FILE), renderVitePressThemeEntry());
   tickWrite('.vitepress/theme/index.mjs');
+  await writeFileIfChanged(path.join(outputRoot, MERMAID_BROWSER_SCRIPT_FILE), await loadBundledMermaidBrowserScript());
+  tickWrite('public/mermaid.min.js');
   await writeFileIfChanged(path.join(outputRoot, VITEPRESS_SCHEMA_FILE), renderVitePressSchema());
   tickWrite('vitepress.schema.json');
   await writeFileIfChanged(path.join(outputRoot, SEARCH_INDEX_FILE), renderSearchIndex(scanResult, output));

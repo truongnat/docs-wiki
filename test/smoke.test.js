@@ -3,11 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { execFile, spawnSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const { resolveAiProvider, pickOllamaModel, enrichWithAi } = require('../src/ai');
 const { enrichWithDesign } = require('../src/design');
 const { renderGitHubPagesWorkflow, renderVercelConfig } = require('../src/deploy');
+const { clusterFeatures } = require('../src/featureClusterer');
 const { scanProject } = require('../src/scanner');
 const { createVitePressArgs } = require('../src/vitepress');
 
@@ -261,14 +262,29 @@ async function createTypedApiFixture() {
   return tempDir;
 }
 
-test('docs-wiki scans the cwd and writes summary, module, and file docs', async () => {
+async function readManifest(tempDir) {
+  return JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+}
+
+async function readFeaturePage(tempDir, matcher) {
+  const manifest = await readManifest(tempDir);
+  const feature = manifest.features.find((entry) => matcher(entry));
+  assert.ok(feature, 'expected a matching feature in manifest');
+  const featureMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'features', `${feature.slug || feature.id}.md`), 'utf8');
+  return { manifest, feature, featureMarkdown };
+}
+
+test('docs-wiki scans the cwd and writes summary, feature, reference, and file docs', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
+  const manifest = await readManifest(tempDir);
   const summaryPath = path.join(tempDir, 'docs-wiki', 'SUMMARY.md');
   const indexPath = path.join(tempDir, 'docs-wiki', 'index.md');
+  const featureIndexPath = path.join(tempDir, 'docs-wiki', 'features', 'index.md');
+  const referenceIndexPath = path.join(tempDir, 'docs-wiki', 'reference', 'index.md');
   const designIndexPath = path.join(tempDir, 'docs-wiki', 'design', 'index.md');
   const basicDesignPath = path.join(tempDir, 'docs-wiki', 'design', 'basic-design.md');
   const detailDesignPath = path.join(tempDir, 'docs-wiki', 'design', 'detail-design.md');
@@ -278,18 +294,22 @@ test('docs-wiki scans the cwd and writes summary, module, and file docs', async 
   const schemaPath = path.join(tempDir, 'docs-wiki', 'vitepress.schema.json');
   const searchIndexPath = path.join(tempDir, 'docs-wiki', 'search-index.json');
   const themeCssPath = path.join(tempDir, 'docs-wiki', 'public', 'docs-wiki.css');
-  const moduleIndexPath = path.join(tempDir, 'docs-wiki', 'modules', 'index.md');
+  const moduleIndexPath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'index.md');
   const workspaceIndexPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'index.md');
   const workspaceRootPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'root.md');
-  const rootModulePath = path.join(tempDir, 'docs-wiki', 'modules', 'root.md');
-  const srcModulePath = path.join(tempDir, 'docs-wiki', 'modules', 'src.md');
-  const nestedModulePath = path.join(tempDir, 'docs-wiki', 'modules', 'src', 'utils.md');
-  const filePagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md');
-  const nestedFilePagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'utils', 'format.ts.md');
+  const rootModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'root.md');
+  const srcModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src.md');
+  const nestedModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'utils.md');
+  const legacyModulePath = path.join(tempDir, 'docs-wiki', 'modules', 'src.md');
+  const filePagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md');
+  const nestedFilePagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'utils', 'format.ts.md');
+  const legacyFilePagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md');
 
-  const [summaryMarkdown, indexMarkdown, designIndexMarkdown, basicDesignMarkdown, detailDesignMarkdown, flowCatalogMarkdown, vitePressConfigText, vitePressThemeText, schemaText, searchIndexText, themeCssText, moduleIndexMarkdown, workspaceIndexMarkdown, workspaceRootMarkdown, rootModuleMarkdown, srcModuleMarkdown, nestedModuleMarkdown, fileMarkdown, nestedFileMarkdown] = await Promise.all([
+  const [summaryMarkdown, indexMarkdown, featureIndexMarkdown, referenceIndexMarkdown, designIndexMarkdown, basicDesignMarkdown, detailDesignMarkdown, flowCatalogMarkdown, vitePressConfigText, vitePressThemeText, schemaText, searchIndexText, themeCssText, moduleIndexMarkdown, workspaceIndexMarkdown, workspaceRootMarkdown, rootModuleMarkdown, srcModuleMarkdown, nestedModuleMarkdown, legacyModuleMarkdown, fileMarkdown, nestedFileMarkdown, legacyFileMarkdown] = await Promise.all([
     fs.readFile(summaryPath, 'utf8'),
     fs.readFile(indexPath, 'utf8'),
+    fs.readFile(featureIndexPath, 'utf8'),
+    fs.readFile(referenceIndexPath, 'utf8'),
     fs.readFile(designIndexPath, 'utf8'),
     fs.readFile(basicDesignPath, 'utf8'),
     fs.readFile(detailDesignPath, 'utf8'),
@@ -305,8 +325,10 @@ test('docs-wiki scans the cwd and writes summary, module, and file docs', async 
     fs.readFile(rootModulePath, 'utf8'),
     fs.readFile(srcModulePath, 'utf8'),
     fs.readFile(nestedModulePath, 'utf8'),
+    fs.readFile(legacyModulePath, 'utf8'),
     fs.readFile(filePagePath, 'utf8'),
     fs.readFile(nestedFilePagePath, 'utf8'),
+    fs.readFile(legacyFilePagePath, 'utf8'),
   ]);
   const schema = JSON.parse(schemaText);
   const searchIndex = JSON.parse(searchIndexText);
@@ -325,12 +347,17 @@ test('docs-wiki scans the cwd and writes summary, module, and file docs', async 
   assert.match(indexMarkdown, /features:/);
   assert.match(indexMarkdown, /title: "fixture-app Docs Wiki"/);
   assert.match(indexMarkdown, /docsWiki:/);
+  assert.match(featureIndexMarkdown, /# Feature Catalog/);
+  assert.match(featureIndexMarkdown, /## Features/);
+  assert.match(referenceIndexMarkdown, /# Reference Index/);
   assert.match(vitePressConfigText, /transformPageData/);
   assert.match(vitePressConfigText, /docs-wiki\.css/);
   assert.match(vitePressConfigText, /provider": "local"/);
-  assert.match(vitePressConfigText, /"\/modules\/"/);
-  assert.match(vitePressConfigText, /"\/files\/"/);
+  assert.match(vitePressConfigText, /"\/features\/"/);
+  assert.match(vitePressConfigText, /"\/reference\/modules\/"/);
+  assert.match(vitePressConfigText, /"\/reference\/files\/"/);
   assert.match(indexMarkdown, /## Snapshot/);
+  assert.match(indexMarkdown, /## Feature Highlights/);
   assert.match(indexMarkdown, /Basic Design/);
   assert.match(indexMarkdown, /## Key Modules/);
   assert.match(indexMarkdown, /## Workspaces/);
@@ -344,7 +371,9 @@ test('docs-wiki scans the cwd and writes summary, module, and file docs', async 
   assert.equal(schema.title, 'docs-wiki VitePress Frontmatter');
   assert.ok(schema.properties.docsWiki);
   assert.equal(searchIndex.project, 'fixture-app');
-  assert.ok(searchIndex.entryCount >= 6);
+  assert.ok(searchIndex.entryCount >= 7);
+  assert.ok(searchIndex.entries.some((entry) => entry.kind === 'feature-index' && entry.title === 'Feature Catalog'));
+  assert.ok(searchIndex.entries.some((entry) => entry.kind === 'reference-index' && entry.title === 'Reference Index'));
   assert.ok(searchIndex.entries.some((entry) => entry.kind === 'design' && entry.title === 'Basic Design'));
   assert.ok(searchIndex.entries.some((entry) => entry.kind === 'file' && entry.title === 'src/index.ts'));
   assert.match(themeCssText, /--vp-c-brand-1/);
@@ -371,6 +400,12 @@ test('docs-wiki scans the cwd and writes summary, module, and file docs', async 
   assert.match(fileMarkdown, /class `Calculator`/);
   assert.match(fileMarkdown, /function `subtract`/);
   assert.match(nestedFileMarkdown, /function `formatCurrency`/);
+  assert.match(legacyModuleMarkdown, /kind: "reference-redirect"/);
+  assert.match(legacyModuleMarkdown, /This page moved to \[Module src\]\(\.\.\/reference\/modules\/src\.md\)/);
+  assert.match(legacyFileMarkdown, /kind: "reference-redirect"/);
+  assert.match(legacyFileMarkdown, /This page moved to \[src\/index\.ts\]\(\.\.\/\.\.\/reference\/files\/src\/index\.ts\.md\)/);
+  assert.ok(Array.isArray(manifest.features));
+  assert.ok(manifest.features.length >= 1);
 });
 
 test('docs-wiki infers auth business flow and Mermaid diagrams from a focused module', async () => {
@@ -379,9 +414,19 @@ test('docs-wiki infers auth business flow and Mermaid diagrams from a focused mo
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
+  const { manifest, feature, featureMarkdown } = await readFeaturePage(tempDir, (entry) => entry.domain === 'auth');
+  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  const legacyModuleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
   const flowCatalog = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'flows.md'), 'utf8');
 
+  assert.match(featureMarkdown, new RegExp(`# ${feature.title}`));
+  assert.match(featureMarkdown, /## Actors & User Stories/);
+  assert.match(featureMarkdown, /## Business Flows/);
+  assert.match(featureMarkdown, /## Related Files/);
+  assert.match(featureMarkdown, /login-route\.ts/);
+  assert.match(featureMarkdown, /auth-service\.ts/);
+  assert.match(featureMarkdown, /auth-repository\.ts/);
+  assert.doesNotMatch(featureMarkdown, /#### Sequence Diagram/);
   assert.match(moduleMarkdown, /## Business Capability/);
   assert.match(moduleMarkdown, /Authentication and access control|auth/i);
   assert.match(moduleMarkdown, /## Inferred Business Flows/);
@@ -393,6 +438,8 @@ test('docs-wiki infers auth business flow and Mermaid diagrams from a focused mo
   assert.match(moduleMarkdown, /auth-service\.ts/);
   assert.match(moduleMarkdown, /## Module Interactions/);
   assert.match(moduleMarkdown, /`src\/auth` -> `src\/shared`/);
+  assert.match(legacyModuleMarkdown, /kind: "reference-redirect"/);
+  assert.ok(manifest.features.some((entry) => entry.domain === 'auth'));
   assert.match(flowCatalog, /Auth login|login/i);
   assert.match(flowCatalog, /```mermaid/);
 });
@@ -413,17 +460,17 @@ test('docs-wiki lets users choose flow, sequence, both, or no diagrams', async (
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  let moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
+  let moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.match(moduleMarkdown, /#### Flow Diagram/);
   assert.match(moduleMarkdown, /#### Sequence Diagram/);
 
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'sequence'], { cwd: tempDir });
-  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
+  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.doesNotMatch(moduleMarkdown, /#### Flow Diagram/);
   assert.match(moduleMarkdown, /#### Sequence Diagram/);
 
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'none'], { cwd: tempDir });
-  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
+  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.doesNotMatch(moduleMarkdown, /#### Flow Diagram/);
   assert.doesNotMatch(moduleMarkdown, /#### Sequence Diagram/);
 });
@@ -434,11 +481,12 @@ test('docs-wiki extracts API contracts into design, module, workspace, and file 
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
+  const { featureMarkdown } = await readFeaturePage(tempDir, (entry) => entry.domain === 'auth');
   const apiContractsMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'api-contracts.md'), 'utf8');
-  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
+  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   const workspaceMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'workspaces', 'root.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'files', 'src', 'auth', 'login-route.ts.md'), 'utf8');
-  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'auth', 'login-route.ts.md'), 'utf8');
+  const manifest = await readManifest(tempDir);
 
   assert.match(apiContractsMarkdown, /# API Contracts/);
   assert.match(apiContractsMarkdown, /- Auth: 1 endpoint/);
@@ -453,6 +501,7 @@ test('docs-wiki extracts API contracts into design, module, workspace, and file 
   assert.match(apiContractsMarkdown, /Query fields: `expand`/);
   assert.match(apiContractsMarkdown, /`400` json: `error`, `traceId`/);
   assert.match(apiContractsMarkdown, /`200` json: `token`, `traceId`, `userId`|`200` json: `token`, `userId`, `traceId`/);
+  assert.match(featureMarkdown, /## API Contracts/);
   assert.match(moduleMarkdown, /## API Contracts/);
   assert.match(workspaceMarkdown, /## API Surface/);
   assert.match(fileMarkdown, /## API Contracts/);
@@ -467,8 +516,8 @@ test('docs-wiki infers zod and DTO schemas plus endpoint-level sequence flow', a
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'both'], { cwd: tempDir });
 
   const apiContractsMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'api-contracts.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'files', 'app', 'api', 'auth', 'login', 'route.ts.md'), 'utf8');
-  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'app', 'api', 'auth', 'login', 'route.ts.md'), 'utf8');
+  const manifest = await readManifest(tempDir);
 
   assert.match(apiContractsMarkdown, /POST \/api\/auth\/login/);
   assert.match(apiContractsMarkdown, /Request schemas: `loginSchema` \(zod\) -> `email`, `password`/);
@@ -484,6 +533,76 @@ test('docs-wiki infers zod and DTO schemas plus endpoint-level sequence flow', a
   assert.ok(endpoint.request.bodySchemas.some((schema) => schema.name === 'loginSchema'));
   assert.ok(Array.isArray(endpoint.responseSchemas));
   assert.ok(endpoint.responseSchemas.some((schema) => schema.name === 'LoginResponse'));
+});
+
+test('feature clustering groups auth files into one cross-file business feature', async () => {
+  const tempDir = await createAuthFixture();
+  const { scanResult } = await scanProject(tempDir, {
+    outDir: 'docs-wiki',
+    maxFiles: Infinity,
+    include: [],
+    ignore: [],
+    incremental: false,
+    cache: {
+      scanKey: 'scan',
+      aiKey: 'ai',
+      renderKey: 'render',
+    },
+    settings: {},
+  });
+
+  const designed = enrichWithDesign(scanResult);
+  const clustered = clusterFeatures(designed, {
+    enabled: true,
+    maxFilesPerFeature: 40,
+    splitByAction: true,
+    customDomains: {},
+  });
+
+  const authFeature = clustered.features.find((entry) => entry.domain === 'auth');
+  assert.ok(authFeature, 'expected an auth feature cluster');
+  assert.equal(authFeature.action, 'login');
+  assert.ok(authFeature.files.some((file) => file.path === 'src/auth/login-route.ts'));
+  assert.ok(authFeature.files.some((file) => file.path === 'src/auth/auth-service.ts'));
+  assert.ok(authFeature.files.some((file) => file.path === 'src/auth/auth-repository.ts'));
+  assert.ok(authFeature.files.some((file) => file.path === 'src/shared/session-store.ts'));
+  assert.ok(authFeature.contextDiagram.includes('flowchart LR'));
+  assert.ok(authFeature.componentDiagram.includes('flowchart LR'));
+});
+
+test('docs-wiki check exits clean when docs are fresh and fails after drift', async () => {
+  const tempDir = await createFixture();
+  const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
+
+  await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
+
+  const fresh = await execFileAsync(process.execPath, [binPath, '--root', tempDir, 'check']);
+  assert.match(fresh.stdout, /Docs are up to date\./);
+
+  await fs.writeFile(
+    path.join(tempDir, 'src', 'index.ts'),
+    [
+      'export function add(a: number, b: number) {',
+      '  return a + b + 1;',
+      '}',
+      '',
+      'export class Calculator {',
+      '  multiply(a: number, b: number) {',
+      '    return a * b;',
+      '  }',
+      '}',
+      '',
+      'export const subtract = (a: number, b: number) => a - b;',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const stale = spawnSync(process.execPath, [binPath, '--root', tempDir, 'check'], {
+    encoding: 'utf8',
+  });
+  assert.equal(stale.status, 1);
+  assert.match(stale.stdout, /Docs are stale\./);
+  assert.match(stale.stdout, /Changed files: src\/index\.ts/);
 });
 
 test('AI module summaries refine module business capability and flow naming', async () => {
@@ -705,7 +824,7 @@ test('docs-wiki respects docs-wiki.config.json for ignore patterns and output st
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
   const indexMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'index.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md'), 'utf8');
+  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md'), 'utf8');
   const themeCssText = await fs.readFile(path.join(tempDir, 'docs-wiki', 'public', 'docs-wiki.css'), 'utf8');
 
   assert.match(indexMarkdown, /Config:/);
@@ -759,8 +878,8 @@ test('docs-wiki discovers source files under hidden directories (dot segments)',
 test('docs-wiki incremental mode rewrites only changed file pages when content changes', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
-  const unchangedPagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md');
-  const changedPagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'utils', 'format.ts.md');
+  const unchangedPagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md');
+  const changedPagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'utils', 'format.ts.md');
   const manifestPath = path.join(tempDir, 'docs-wiki', 'manifest.json');
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });

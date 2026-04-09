@@ -30,6 +30,12 @@ const THEME_PRESETS = ['clean', 'warm', 'enterprise'];
 const DEFAULT_THEME_PRESET = 'clean';
 const FLOW_DIAGRAM_MODES = ['flow', 'sequence', 'both', 'none'];
 const DEFAULT_FLOW_DIAGRAM_MODE = 'flow';
+const DEFAULT_FEATURE_OPTIONS = {
+  enabled: true,
+  maxFilesPerFeature: 40,
+  splitByAction: true,
+  customDomains: {},
+};
 const DEFAULT_OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1';
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
@@ -57,6 +63,36 @@ function normalizeMaxFiles(value) {
   }
 
   return Number(value);
+}
+
+function normalizePositiveNumber(value, fieldName, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`\`${fieldName}\` must be a positive number when set in docs-wiki config.`);
+  }
+
+  return parsed;
+}
+
+function normalizeCustomDomains(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, keywords]) => ([
+      String(key || '').trim(),
+      Array.isArray(keywords)
+        ? keywords.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [],
+    ]))
+    .filter(([key, keywords]) => key && keywords.length > 0);
+
+  return Object.fromEntries(entries);
 }
 
 function normalizeTemplate(value) {
@@ -136,6 +172,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
   const fileConfig = loadedConfig.config || {};
   const outputConfig = fileConfig.output || {};
   const aiConfig = fileConfig.ai || {};
+  const featureConfig = fileConfig.features || {};
   const output = resolveOutput(
     cliOptions.template ?? fileConfig.template ?? outputConfig.template,
     {
@@ -154,6 +191,16 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
     incremental: cliOptions.incremental ?? normalizeBoolean(fileConfig.incremental, true),
     watch: cliOptions.watch ?? normalizeBoolean(fileConfig.watch, false),
     output,
+    features: {
+      enabled: normalizeBoolean(featureConfig.enabled, DEFAULT_FEATURE_OPTIONS.enabled),
+      maxFilesPerFeature: normalizePositiveNumber(
+        cliOptions.maxFilesPerFeature ?? featureConfig.maxFilesPerFeature,
+        'features.maxFilesPerFeature',
+        DEFAULT_FEATURE_OPTIONS.maxFilesPerFeature,
+      ),
+      splitByAction: cliOptions.splitByAction ?? normalizeBoolean(featureConfig.splitByAction, DEFAULT_FEATURE_OPTIONS.splitByAction),
+      customDomains: normalizeCustomDomains(featureConfig.customDomains),
+    },
     ai: {
       enabled: cliOptions.ai ?? normalizeBoolean(aiConfig.enabled, false),
       provider: cliOptions.aiProvider ?? aiConfig.provider ?? 'auto',
@@ -167,6 +214,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaApiKey: process.env.OLLAMA_API_KEY ?? 'ollama',
       filePrompt: typeof aiConfig.filePrompt === 'string' ? aiConfig.filePrompt.trim() : '',
       modulePrompt: typeof aiConfig.modulePrompt === 'string' ? aiConfig.modulePrompt.trim() : '',
+      featurePrompt: typeof aiConfig.featurePrompt === 'string' ? aiConfig.featurePrompt.trim() : '',
       projectPrompt: typeof aiConfig.projectPrompt === 'string' ? aiConfig.projectPrompt.trim() : '',
     },
     config: {
@@ -190,6 +238,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaBaseURL: resolved.ai.ollamaBaseURL,
       reasoningEffort: resolved.ai.reasoningEffort,
       modulePrompt: resolved.ai.modulePrompt,
+      featurePrompt: resolved.ai.featurePrompt,
       filePrompt: resolved.ai.filePrompt,
       projectPrompt: resolved.ai.projectPrompt,
     }),
@@ -197,6 +246,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
   resolved.cache.renderKey = hashObject({
     output: resolved.output,
     aiKey: resolved.cache.aiKey,
+    features: resolved.features,
   });
 
   resolved.settings = {
@@ -207,6 +257,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
     incremental: resolved.incremental,
     watch: resolved.watch,
     output: resolved.output,
+    features: resolved.features,
     ai: {
       enabled: resolved.ai.enabled,
       provider: resolved.ai.provider,
@@ -215,6 +266,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       ollamaBaseURL: resolved.ai.ollamaBaseURL,
       reasoningEffort: resolved.ai.reasoningEffort,
       modulePrompt: resolved.ai.modulePrompt,
+      featurePrompt: resolved.ai.featurePrompt,
     },
   };
 
@@ -226,6 +278,7 @@ module.exports = {
   DEFAULT_THEME_PRESET,
   DEFAULT_OLLAMA_BASE_URL,
   DEFAULT_OLLAMA_MODEL,
+  DEFAULT_FEATURE_OPTIONS,
   DEFAULT_TEMPLATE,
   TEMPLATE_PRESETS,
   THEME_PRESETS,

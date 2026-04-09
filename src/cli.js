@@ -1,8 +1,10 @@
 const path = require('node:path');
-const { enrichWithAi, DEFAULT_AI_MODEL } = require('./ai');
+const { enrichWithAi, enrichFeaturesWithAi, DEFAULT_AI_MODEL } = require('./ai');
 const { loadUserConfig, resolveOptions, DEFAULT_THEME_PRESET, THEME_PRESETS, FLOW_DIAGRAM_MODES, DEFAULT_FLOW_DIAGRAM_MODE } = require('./config');
 const { scaffoldDeploy } = require('./deploy');
 const { enrichWithDesign } = require('./design');
+const { checkDocsDrift, formatDriftReport } = require('./drift');
+const { clusterFeatures, formatFeatureDebug } = require('./featureClusterer');
 const { scanProject } = require('./scanner');
 const { writeDocs } = require('./generator');
 const { ensureVitePressRuntimeDeps, runVitePress, spawnVitePress } = require('./vitepress');
@@ -17,6 +19,7 @@ Usage:
   npx docs-wiki serve
   npx docs-wiki build-site
   npx docs-wiki preview
+  npx docs-wiki check
   npx docs-wiki init-deploy --target github-pages
   npx docs-wiki init-deploy --target vercel
   npx docs-wiki --root ./path/to/project --out-dir docs-wiki
@@ -39,6 +42,11 @@ Options:
   --theme-preset <name> VitePress theme preset: ${THEME_PRESETS.join(', ')}. Defaults to ${DEFAULT_THEME_PRESET}.
   --flow-diagram <name> Flow-diagram mode for inferred flows: ${FLOW_DIAGRAM_MODES.join(', ')}. Defaults to ${DEFAULT_FLOW_DIAGRAM_MODE}.
   --max-files <n>       Limit the number of files scanned. Useful for smoke tests.
+  --max-files-per-feature <n>
+                       Split large features when the cluster grows beyond this file count. Defaults to 40.
+  --split-by-action     Split large domains into action-level features such as login/register/reset.
+  --no-split-by-action  Keep one feature per domain even when the cluster is large.
+  --debug-features      Print clustered feature metadata to stdout after the scan.
   --ai                  Enable AI-generated summaries.
   --no-ai               Disable AI summaries even if config enables them.
   --ai-provider <name>  AI provider: auto, ollama, openai.
@@ -66,6 +74,8 @@ function parseArgs(argv) {
     themePreset: undefined,
     flowDiagram: undefined,
     maxFiles: undefined,
+    maxFilesPerFeature: undefined,
+    splitByAction: undefined,
     ai: undefined,
     aiProvider: undefined,
     aiModel: undefined,
@@ -81,16 +91,17 @@ function parseArgs(argv) {
     deployTarget: undefined,
     deployBranch: undefined,
     overwrite: false,
+    debugFeatures: false,
     verbose: false,
     progress: undefined,
   };
 
-  const commandNames = new Set(['serve', 'dev', 'preview', 'build-site', 'init-deploy']);
+  const commandNames = new Set(['serve', 'dev', 'preview', 'build-site', 'check', 'init-deploy']);
 
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
 
-    if (index === 0 && commandNames.has(current)) {
+    if ((index === 0 || options.command === 'generate') && commandNames.has(current)) {
       options.command = current === 'dev' ? 'serve' : current;
       continue;
     }
@@ -200,6 +211,31 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (current === '--max-files-per-feature') {
+      const raw = Number(argv[index + 1]);
+      if (!Number.isFinite(raw) || raw <= 0) {
+        throw new Error('--max-files-per-feature must be a positive number');
+      }
+      options.maxFilesPerFeature = raw;
+      index += 1;
+      continue;
+    }
+
+    if (current === '--split-by-action') {
+      options.splitByAction = true;
+      continue;
+    }
+
+    if (current === '--no-split-by-action') {
+      options.splitByAction = false;
+      continue;
+    }
+
+    if (current === '--debug-features') {
+      options.debugFeatures = true;
+      continue;
+    }
+
     if (current === '--ai') {
       options.ai = true;
       continue;
@@ -281,6 +317,7 @@ function printResult(result, options, cliOpts = {}) {
   console.log(`Symbols: ${result.totals.symbols}`);
   console.log(`Modules: ${result.totals.directories}`);
   console.log(`Workspaces: ${result.totals.workspaces}`);
+  console.log(`Features: ${Array.isArray(result.features) ? result.features.length : 0}`);
   console.log(`Mode:    ${result.incremental.mode}`);
   console.log(`Template: ${options.output.template}`);
   console.log(`Theme:   ${options.output.themePreset}`);
@@ -297,7 +334,8 @@ function printResult(result, options, cliOpts = {}) {
 
   if (result.ai && result.ai.enabled) {
     const moduleCount = Array.isArray(result.ai.modules) ? result.ai.modules.filter((entry) => entry && entry.capability).length : 0;
-    console.log(`AI:      ${result.ai.provider}/${result.ai.model} (${result.ai.summarizedFiles}/${result.totals.filesParsed} file summaries, ${moduleCount}/${result.totals.directories} module summaries)`);
+    const featureCount = Array.isArray(result.ai.features) ? result.ai.features.filter((entry) => entry && entry.id).length : 0;
+    console.log(`AI:      ${result.ai.provider}/${result.ai.model} (${result.ai.summarizedFiles}/${result.totals.filesParsed} file summaries, ${moduleCount}/${result.totals.directories} module summaries, ${featureCount}/${Array.isArray(result.features) ? result.features.length : 0} feature summaries)`);
   }
 
   const errorCount = result.errors.length + (result.ai && Array.isArray(result.ai.errors) ? result.ai.errors.length : 0);
@@ -463,8 +501,27 @@ async function build(cliOptions, buildMeta = {}) {
   });
 
   const designedResult = enrichWithDesign(enrichedResult);
+  const clusteredResult = clusterFeatures(designedResult, options.features);
+  const finalResult = await enrichFeaturesWithAi(clusteredResult, {
+    enabled: options.ai.enabled,
+    provider: options.ai.provider,
+    model: options.ai.model,
+    apiKey: options.ai.apiKey,
+    baseURL: options.ai.baseURL,
+    ollamaBaseURL: options.ai.ollamaBaseURL,
+    ollamaModel: options.ai.ollamaModel,
+    ollamaModelStrategy: options.ai.ollamaModelStrategy,
+    ollamaApiKey: options.ai.ollamaApiKey,
+    reasoningEffort: options.ai.reasoningEffort,
+    featurePrompt: options.ai.featurePrompt,
+    previousManifest,
+  });
 
-  await writeDocs(designedResult, {
+  if (cliOptions.debugFeatures) {
+    console.log(formatFeatureDebug(finalResult.features));
+  }
+
+  await writeDocs(finalResult, {
     previousManifest,
     output: options.output,
     onProgress: write,
@@ -472,8 +529,39 @@ async function build(cliOptions, buildMeta = {}) {
 
   return {
     options,
-    result: designedResult,
+    result: finalResult,
   };
+}
+
+async function runCheck(cliOptions) {
+  const useProgress = cliOptions.progress !== false && process.stderr.isTTY;
+  const verbose = Boolean(cliOptions.verbose);
+  const loadedConfig = await loadUserConfig(cliOptions.root, cliOptions.configPath);
+  const options = resolveOptions(cliOptions.root, cliOptions, loadedConfig);
+
+  if (useProgress) {
+    printBanner();
+  }
+
+  const { scan } = createProgressBridge(useProgress);
+  const { scanResult, previousManifest } = await scanProject(options.root, {
+    outDir: options.outDir,
+    maxFiles: options.maxFiles,
+    include: options.include,
+    ignore: options.ignore,
+    incremental: true,
+    cache: options.cache,
+    settings: options.settings,
+    onProgress: scan,
+    scanDiagnostics: verbose,
+  });
+
+  const report = checkDocsDrift(scanResult, previousManifest, options);
+  console.log(formatDriftReport(report));
+
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
 }
 
 async function runCli(argv) {
@@ -484,6 +572,11 @@ async function runCli(argv) {
 
   if (cliOptions.help) {
     printHelp();
+    return;
+  }
+
+  if (cliOptions.command === 'check') {
+    await runCheck(cliOptions);
     return;
   }
 

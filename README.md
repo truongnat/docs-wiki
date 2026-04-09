@@ -15,9 +15,10 @@ The goal is not only code reference. The generated output tries to answer four q
 
 The generated site is VitePress-first and includes:
 
+- feature pages grouped by inferred business capability
 - project overview pages
-- module and workspace indexes
-- one page per source file
+- reference indexes for modules and files
+- one page per source file and module in the reference section
 - Basic Design and Detail Design pages
 - inferred business/request flows with Mermaid diagrams
 - inferred API contract pages with request/response summaries
@@ -97,6 +98,12 @@ npx docs-wiki build-site --base /internal-docs/
 npx docs-wiki preview --port 4174
 ```
 
+Check whether the generated docs are stale:
+
+```bash
+npx docs-wiki check
+```
+
 Deploy scaffold:
 
 ```bash
@@ -129,6 +136,10 @@ The CLI currently supports:
 - `--theme-preset <clean|warm|enterprise>`
 - `--flow-diagram <flow|sequence|both|none>`
 - `--max-files <n>`
+- `--max-files-per-feature <n>`
+- `--split-by-action`
+- `--no-split-by-action`
+- `--debug-features`
 - `--ai`
 - `--no-ai`
 - `--ai-provider <auto|ollama|openai>`
@@ -158,6 +169,14 @@ Example:
   "watch": false,
   "template": "api-first",
   "themePreset": "warm",
+  "features": {
+    "enabled": true,
+    "maxFilesPerFeature": 30,
+    "splitByAction": true,
+    "customDomains": {
+      "billing": ["invoice", "subscription"]
+    }
+  },
   "output": {
     "flowDiagram": "flow",
     "includeCodeBlocks": true,
@@ -175,6 +194,7 @@ Example:
     "reasoningEffort": "none",
     "filePrompt": "Describe contracts and side effects.",
     "modulePrompt": "Emphasize business capability, actors, and request flow.",
+    "featurePrompt": "Write user stories, edge cases, and cross-workspace boundaries.",
     "projectPrompt": "Emphasize runtime architecture and boundaries."
   }
 }
@@ -190,6 +210,10 @@ Supported config keys:
 - `watch`
 - `template`
 - `themePreset`
+- `features.enabled`
+- `features.maxFilesPerFeature`
+- `features.splitByAction`
+- `features.customDomains`
 - `output.flowDiagram`
 - `output.includeCodeBlocks`
 - `output.includeAiSections`
@@ -205,6 +229,7 @@ Supported config keys:
 - `ai.reasoningEffort`
 - `ai.filePrompt`
 - `ai.modulePrompt`
+- `ai.featurePrompt`
 - `ai.projectPrompt`
 
 ## Templates
@@ -267,16 +292,21 @@ By default the CLI writes:
 
 - `docs-wiki/SUMMARY.md`
 - `docs-wiki/index.md`
+- `docs-wiki/features/index.md`
+- `docs-wiki/features/*.md`
 - `docs-wiki/design/index.md`
 - `docs-wiki/design/basic-design.md`
 - `docs-wiki/design/detail-design.md`
 - `docs-wiki/design/api-contracts.md`
 - `docs-wiki/design/flows.md`
-- `docs-wiki/modules/index.md`
-- `docs-wiki/modules/**/*.md`
+- `docs-wiki/reference/index.md`
+- `docs-wiki/reference/modules/index.md`
+- `docs-wiki/reference/modules/**/*.md`
 - `docs-wiki/workspaces/index.md`
 - `docs-wiki/workspaces/**/*.md`
-- `docs-wiki/files/**/*.md`
+- `docs-wiki/reference/files/**/*.md`
+- `docs-wiki/modules/**/*.md` as redirect stubs for old URLs
+- `docs-wiki/files/**/*.md` as redirect stubs for old URLs
 - `docs-wiki/.vitepress/config.mjs`
 - `docs-wiki/.vitepress/theme/index.mjs`
 - `docs-wiki/public/docs-wiki.css`
@@ -304,6 +334,7 @@ The design layer builds:
 - `Basic Design`: actors, top capabilities, context-level view
 - `Detail Design`: runtime shape, module responsibilities, interaction graph
 - `Flow Catalog`: business/request flows inferred from structure and local edges
+- feature pages: user stories, related flows, related files, basic/detail design, API contracts, and edge cases for each inferred business capability
 
 The design model uses two kinds of evidence:
 
@@ -412,6 +443,7 @@ On repeated runs, `docs-wiki` attempts to:
 
 - reuse parse results for unchanged files
 - reuse AI summaries when AI settings still match
+- reuse feature AI summaries when the feature hash is unchanged
 - remove pages for deleted files/modules/workspaces
 - rewrite only changed pages when possible
 
@@ -420,6 +452,24 @@ Disable it if you want a full clean pass:
 ```bash
 npx docs-wiki --no-incremental
 ```
+
+## Drift Check
+
+Use `check` in CI or before commits when you want to know whether the committed wiki output is stale.
+
+```bash
+npx docs-wiki check
+```
+
+The command compares the current codebase against the previously generated `docs-wiki/manifest.json` and fails when:
+
+- source files changed or were deleted
+- feature clusters changed
+- inferred API contracts changed
+- render settings changed
+- AI output is expected but the current manifest is missing matching AI summaries
+
+This gives you a simple CI gate for “docs must be regenerated”.
 
 ## Watch Mode
 
@@ -459,11 +509,12 @@ npx docs-wiki serve
 Then inspect these pages first:
 
 1. `docs-wiki/index.md`
-2. `docs-wiki/design/basic-design.md`
-3. `docs-wiki/design/detail-design.md`
-4. `docs-wiki/design/api-contracts.md`
-5. `docs-wiki/design/flows.md`
-6. `docs-wiki/modules/index.md`
+2. `docs-wiki/features/index.md`
+3. `docs-wiki/design/basic-design.md`
+4. `docs-wiki/design/detail-design.md`
+5. `docs-wiki/design/api-contracts.md`
+6. `docs-wiki/design/flows.md`
+7. `docs-wiki/reference/index.md`
 
 ## Repository Layout
 
@@ -473,9 +524,11 @@ For contributors to this repository:
 - `src/cli.js`: command parsing and orchestration
 - `src/scanner.js`: discovery, parsing, dependency extraction, API/schema inference
 - `src/design.js`: design model, flow inference, endpoint sequence generation
+- `src/featureClusterer.js`: deterministic feature clustering across modules and workspaces
 - `src/generator.js`: Markdown, VitePress, search index, and page rendering
 - `src/ai.js`: OpenAI/Ollama integration and normalization
 - `src/config.js`: config and option resolution
+- `src/drift.js`: stale-doc detection used by `docs-wiki check`
 - `src/vitepress.js`: local VitePress execution wrapper
 - `src/deploy.js`: deploy scaffold generation
 - `test/smoke.test.js`: end-to-end smoke tests

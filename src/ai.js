@@ -7,6 +7,7 @@ const DEFAULT_REASONING_EFFORT = 'none';
 const DEFAULT_OLLAMA_MODEL_STRATEGY = 'family';
 const DEFAULT_FILE_SYSTEM_PROMPT = 'You generate compact technical documentation for source files. Be precise, concise, and avoid speculation.';
 const DEFAULT_MODULE_SYSTEM_PROMPT = 'You generate business-oriented module documentation from file summaries and code structure. Focus on capability, business flow, and module boundaries.';
+const DEFAULT_FEATURE_SYSTEM_PROMPT = 'You generate feature-oriented design documentation from clustered code summaries. Focus on user journeys, cross-workspace boundaries, API contracts, and operational edge cases.';
 const DEFAULT_PROJECT_SYSTEM_PROMPT = 'You generate top-level project overviews for internal engineering wikis. Keep it concrete and architecture-focused.';
 const DEFAULT_OLLAMA_TIMEOUT_MS = 1200;
 
@@ -45,6 +46,39 @@ const ModuleSummarySchema = z.object({
     name: z.string(),
     goal: z.string(),
   })).max(4).default([]),
+});
+
+const FeatureSummarySchema = z.object({
+  overview: z.string(),
+  userStories: z.array(z.object({
+    role: z.string(),
+    goal: z.string(),
+    benefit: z.string(),
+    acceptance: z.array(z.string()).max(5).default([]),
+  })).max(5).default([]),
+  basicDesign: z.object({
+    context: z.string(),
+    boundaries: z.array(z.string()).max(6).default([]),
+    externalSystems: z.array(z.string()).max(6).default([]),
+  }),
+  detailDesign: z.object({
+    components: z.array(z.object({
+      name: z.string(),
+      layer: z.string(),
+      responsibility: z.string(),
+    })).max(10).default([]),
+    dataModel: z.string(),
+    stateManagement: z.string(),
+  }),
+  flowNarratives: z.array(z.object({
+    name: z.string(),
+    steps: z.array(z.string()).max(8).default([]),
+  })).max(6).default([]),
+  errorCases: z.array(z.object({
+    case: z.string(),
+    handling: z.string(),
+  })).max(8).default([]),
+  openQuestions: z.array(z.string()).max(6).default([]),
 });
 
 function createSymbolKey(symbol) {
@@ -176,6 +210,61 @@ function buildModulePrompt(module, files) {
     '',
     'Files:',
     fileBlocks.join('\n\n'),
+  ].join('\n');
+}
+
+function buildFeaturePrompt(feature, scanResult) {
+  const fileMap = new Map(scanResult.files.map((file) => [file.relativePath, file]));
+  const fileBlocks = feature.files.slice(0, 32).map((fileRef) => {
+    const file = fileMap.get(fileRef.path);
+    const aiSummary = file && file.ai ? file.ai : {};
+    return [
+      `file: ${fileRef.path}`,
+      `workspace: ${fileRef.workspaceName || fileRef.workspace || '(root)'}`,
+      `role: ${fileRef.roleLabel || fileRef.role}`,
+      `reason: ${fileRef.reason}`,
+      `summary: ${aiSummary.summary || 'n/a'}`,
+      `responsibilities: ${(aiSummary.responsibilities || []).join('; ') || 'n/a'}`,
+    ].join('\n');
+  });
+  const endpointBlocks = (feature.apiContracts || []).slice(0, 16).map((endpoint) => [
+    `endpoint: ${endpoint.method} ${endpoint.path}`,
+    `handler: ${endpoint.handler || 'n/a'}`,
+    `request: ${[
+      endpoint.request && endpoint.request.bodyKeys && endpoint.request.bodyKeys.length > 0 ? `body ${endpoint.request.bodyKeys.join(', ')}` : '',
+      endpoint.request && endpoint.request.queryKeys && endpoint.request.queryKeys.length > 0 ? `query ${endpoint.request.queryKeys.join(', ')}` : '',
+      endpoint.request && endpoint.request.paramKeys && endpoint.request.paramKeys.length > 0 ? `params ${endpoint.request.paramKeys.join(', ')}` : '',
+    ].filter(Boolean).join(' | ') || 'n/a'}`,
+    `responses: ${(endpoint.responses || []).map((response) => `${response.status}:${(response.bodyKeys || []).join(', ')}`).join(' | ') || 'n/a'}`,
+  ].join('\n'));
+  const flowBlocks = (feature.flows || []).slice(0, 8).map((flow) => [
+    `flow: ${flow.name}`,
+    `goal: ${flow.goal || 'n/a'}`,
+    `steps: ${(flow.steps || []).join(' | ') || 'n/a'}`,
+  ].join('\n'));
+
+  return [
+    `Feature: ${feature.title}`,
+    `Domain: ${feature.domainLabel || feature.domain}`,
+    `Action: ${feature.actionLabel || 'n/a'}`,
+    `Summary: ${feature.summary || 'n/a'}`,
+    `Workspaces: ${(feature.workspaces || []).map((workspace) => workspace.name || workspace.directory || '(root)').join(', ') || 'n/a'}`,
+    `Actors: ${(feature.actors || []).join(', ') || 'n/a'}`,
+    `Entry points (FE): ${(feature.entryPoints && feature.entryPoints.fe ? feature.entryPoints.fe.join(', ') : '') || 'n/a'}`,
+    `Entry points (BE): ${(feature.entryPoints && feature.entryPoints.be ? feature.entryPoints.be.join(', ') : '') || 'n/a'}`,
+    '',
+    'Generate feature-oriented design docs for this cluster.',
+    'Use business language and explain the end-to-end journey across UI, API, services, and persistence.',
+    'Do not invent systems or responsibilities that are not grounded in the provided summaries.',
+    '',
+    'Files:',
+    fileBlocks.length > 0 ? fileBlocks.join('\n\n') : '(no files)',
+    '',
+    'API contracts:',
+    endpointBlocks.length > 0 ? endpointBlocks.join('\n\n') : '(no endpoints)',
+    '',
+    'Flows:',
+    flowBlocks.length > 0 ? flowBlocks.join('\n\n') : '(no flows)',
   ].join('\n');
 }
 
@@ -532,6 +621,124 @@ function coerceModuleSummary(raw, module, files) {
   return ModuleSummarySchema.parse(normalized);
 }
 
+function normalizeUserStories(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const role = normalizeString(entry.role || entry.actor);
+      const goal = normalizeString(entry.goal || entry.story);
+      const benefit = normalizeString(entry.benefit || entry.outcome);
+      const acceptance = normalizeStringArray(entry.acceptance, 5);
+      if (!role || !goal || !benefit) {
+        return null;
+      }
+      return { role, goal, benefit, acceptance };
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function normalizeFeatureComponents(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const name = normalizeString(entry.name || entry.component || entry.file);
+      const layer = normalizeString(entry.layer || entry.type || entry.kind);
+      const responsibility = normalizeString(entry.responsibility || entry.summary || entry.reason);
+      if (!name || !responsibility) {
+        return null;
+      }
+      return {
+        name,
+        layer: layer || 'Component',
+        responsibility,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function normalizeFlowNarratives(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const name = normalizeString(entry.name || entry.flow || entry.title);
+      const steps = normalizeStringArray(entry.steps, 8);
+      if (!name) {
+        return null;
+      }
+      return { name, steps };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function normalizeErrorCases(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const caseSummary = normalizeString(entry.case || entry.name || entry.error);
+      const handling = normalizeString(entry.handling || entry.mitigation || entry.response);
+      if (!caseSummary || !handling) {
+        return null;
+      }
+      return {
+        case: caseSummary,
+        handling,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function coerceFeatureSummary(raw, feature) {
+  const rawOverview = normalizeString(raw && raw.overview);
+  const basicDesign = raw && raw.basicDesign && typeof raw.basicDesign === 'object' ? raw.basicDesign : {};
+  const detailDesign = raw && raw.detailDesign && typeof raw.detailDesign === 'object' ? raw.detailDesign : {};
+
+  return FeatureSummarySchema.parse({
+    overview: !isGenericSummary(rawOverview) ? rawOverview : (feature.summary || `${feature.title} coordinates a cross-cutting business workflow.`),
+    userStories: normalizeUserStories(raw && raw.userStories),
+    basicDesign: {
+      context: normalizeString(basicDesign.context) || feature.summary || `${feature.title} spans multiple code units that together deliver the feature.`,
+      boundaries: normalizeStringArray(basicDesign.boundaries, 6),
+      externalSystems: normalizeStringArray(basicDesign.externalSystems, 6),
+    },
+    detailDesign: {
+      components: normalizeFeatureComponents(detailDesign.components),
+      dataModel: normalizeString(detailDesign.dataModel) || 'State and contracts are inferred from the related files and API schemas.',
+      stateManagement: normalizeString(detailDesign.stateManagement) || 'State transitions are inferred from feature flow steps and endpoint contracts.',
+    },
+    flowNarratives: normalizeFlowNarratives(raw && raw.flowNarratives),
+    errorCases: normalizeErrorCases(raw && raw.errorCases),
+    openQuestions: normalizeStringArray(raw && raw.openQuestions, 6),
+  });
+}
+
 async function summarizeFile(client, file, options, providerInfo) {
   const systemPrompt = options.filePrompt
     ? `${DEFAULT_FILE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.filePrompt}`
@@ -629,6 +836,68 @@ async function summarizeModule(client, module, files, options, providerInfo) {
   return response.output_parsed;
 }
 
+async function summarizeFeature(client, feature, scanResult, options, providerInfo) {
+  const systemPrompt = options.featurePrompt
+    ? `${DEFAULT_FEATURE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.featurePrompt}`
+    : DEFAULT_FEATURE_SYSTEM_PROMPT;
+
+  if (providerInfo.provider === 'ollama') {
+    const response = await client.chat.completions.create({
+      model: providerInfo.model,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `${systemPrompt}\nReturn valid JSON only.` },
+        {
+          role: 'user',
+          content: `${buildFeaturePrompt(feature, scanResult)}\n\nReturn a JSON object with this exact shape:
+{
+  "overview": "string",
+  "userStories": [
+    { "role": "string", "goal": "string", "benefit": "string", "acceptance": ["string"] }
+  ],
+  "basicDesign": {
+    "context": "string",
+    "boundaries": ["string"],
+    "externalSystems": ["string"]
+  },
+  "detailDesign": {
+    "components": [
+      { "name": "string", "layer": "string", "responsibility": "string" }
+    ],
+    "dataModel": "string",
+    "stateManagement": "string"
+  },
+  "flowNarratives": [
+    { "name": "string", "steps": ["string"] }
+  ],
+  "errorCases": [
+    { "case": "string", "handling": "string" }
+  ],
+  "openQuestions": ["string"]
+}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0] && response.choices[0].message ? response.choices[0].message.content : '';
+    return coerceFeatureSummary(extractJsonPayload(content), feature);
+  }
+
+  const response = await client.responses.parse({
+    model: providerInfo.model,
+    reasoning: { effort: options.reasoningEffort },
+    input: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: buildFeaturePrompt(feature, scanResult) },
+    ],
+    text: {
+      format: zodTextFormat(FeatureSummarySchema, 'feature_summary'),
+    },
+  });
+
+  return response.output_parsed;
+}
+
 async function summarizeProject(client, scanResult, options, providerInfo) {
   const systemPrompt = options.projectPrompt
     ? `${DEFAULT_PROJECT_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.projectPrompt}`
@@ -704,6 +973,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     reasoningEffort: rawOptions.reasoningEffort || process.env.DOCS_WIKI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
     filePrompt: rawOptions.filePrompt || '',
     modulePrompt: rawOptions.modulePrompt || '',
+    featurePrompt: rawOptions.featurePrompt || '',
     projectPrompt: rawOptions.projectPrompt || '',
     previousManifest: rawOptions.previousManifest || null,
   };
@@ -716,6 +986,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
         model: null,
         errors: [],
         modules: [],
+        features: [],
       },
       incremental: {
         ...scanResult.incremental,
@@ -921,6 +1192,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
       summarizedFiles: files.filter((file) => file.ai && file.ai.summary).length,
       reusedFiles: reusedAiFiles,
       modules,
+      features: [],
       reusedModules: reusedAiModules,
       project,
     },
@@ -934,6 +1206,116 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
   };
 }
 
+async function enrichFeaturesWithAi(scanResult, rawOptions = {}) {
+  const options = {
+    enabled: Boolean(rawOptions.enabled),
+    provider: rawOptions.provider || 'auto',
+    apiKey: rawOptions.apiKey || process.env.OPENAI_API_KEY || '',
+    baseURL: rawOptions.baseURL || process.env.OPENAI_BASE_URL || '',
+    model: rawOptions.model || process.env.DOCS_WIKI_OPENAI_MODEL || DEFAULT_AI_MODEL,
+    ollamaBaseURL: rawOptions.ollamaBaseURL || process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
+    ollamaModel: rawOptions.ollamaModel || process.env.OLLAMA_MODEL || 'llama3.2',
+    ollamaModelStrategy: rawOptions.ollamaModelStrategy || process.env.OLLAMA_MODEL_STRATEGY || DEFAULT_OLLAMA_MODEL_STRATEGY,
+    ollamaApiKey: rawOptions.ollamaApiKey || process.env.OLLAMA_API_KEY || 'ollama',
+    reasoningEffort: rawOptions.reasoningEffort || process.env.DOCS_WIKI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
+    featurePrompt: rawOptions.featurePrompt || '',
+    previousManifest: rawOptions.previousManifest || null,
+  };
+
+  if (!Array.isArray(scanResult.features) || scanResult.features.length === 0) {
+    return {
+      ...scanResult,
+      ai: {
+        ...(scanResult.ai || {}),
+        features: [],
+      },
+    };
+  }
+
+  if (!options.enabled) {
+    return {
+      ...scanResult,
+      features: scanResult.features.map((feature) => ({ ...feature, ai: null })),
+      ai: {
+        ...(scanResult.ai || {}),
+        features: [],
+      },
+    };
+  }
+
+  const providerInfo = await resolveAiProvider(options, rawOptions.dependencies);
+  const client = providerInfo.client;
+  const previousManifest = options.previousManifest;
+  const canReuseAi = Boolean(previousManifest && previousManifest.cache && previousManifest.cache.aiKey === scanResult.cache.aiKey);
+  const previousFeaturesById = new Map(
+    canReuseAi && Array.isArray(previousManifest.features)
+      ? previousManifest.features.map((feature) => [feature.id, feature])
+      : [],
+  );
+
+  const features = [];
+  const aiFeatures = [];
+  const errors = [];
+
+  for (const feature of scanResult.features) {
+    const previousFeature = previousFeaturesById.get(feature.id);
+    const canReuseFeatureAi = Boolean(
+      canReuseAi
+      && previousFeature
+      && previousFeature.hash === feature.hash
+      && previousFeature.ai,
+    );
+
+    if (canReuseFeatureAi) {
+      features.push({
+        ...feature,
+        ai: previousFeature.ai,
+      });
+      aiFeatures.push({
+        id: feature.id,
+        title: feature.title,
+      });
+      continue;
+    }
+
+    try {
+      const parsed = await summarizeFeature(client, feature, scanResult, options, providerInfo);
+      features.push({
+        ...feature,
+        ai: parsed,
+      });
+      aiFeatures.push({
+        id: feature.id,
+        title: feature.title,
+      });
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      errors.push({
+        scope: `feature:${feature.id}`,
+        message,
+      });
+      features.push({
+        ...feature,
+        ai: null,
+      });
+    }
+  }
+
+  return {
+    ...scanResult,
+    features,
+    ai: {
+      ...(scanResult.ai || {}),
+      enabled: true,
+      provider: providerInfo.provider,
+      model: providerInfo.model,
+      reasoningEffort: options.reasoningEffort,
+      errors: [...((scanResult.ai && scanResult.ai.errors) || []), ...errors],
+      features: aiFeatures,
+    },
+  };
+}
+
 module.exports = {
   DEFAULT_AI_MODEL,
   DEFAULT_REASONING_EFFORT,
@@ -942,4 +1324,5 @@ module.exports = {
   pickOllamaModel,
   resolveAiProvider,
   enrichWithAi,
+  enrichFeaturesWithAi,
 };

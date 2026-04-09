@@ -13,11 +13,16 @@ const VITEPRESS_CONFIG_FILE = path.join('.vitepress', 'config.mjs');
 const VITEPRESS_THEME_FILE = path.join('.vitepress', 'theme', 'index.mjs');
 const SEARCH_INDEX_FILE = 'search-index.json';
 const THEME_STYLES_FILE = path.join('public', 'docs-wiki.css');
+const FEATURES_INDEX_FILE = path.join('features', 'index.md');
 const DESIGN_INDEX_FILE = path.join('design', 'index.md');
 const BASIC_DESIGN_FILE = path.join('design', 'basic-design.md');
 const DETAIL_DESIGN_FILE = path.join('design', 'detail-design.md');
 const FLOW_CATALOG_FILE = path.join('design', 'flows.md');
 const API_CONTRACTS_FILE = path.join('design', 'api-contracts.md');
+const REFERENCE_INDEX_FILE = path.join('reference', 'index.md');
+const REFERENCE_MODULE_INDEX_FILE = path.join('reference', 'modules', 'index.md');
+const REFERENCE_FILE_ROOT = path.join('reference', 'files');
+const REFERENCE_MODULE_ROOT = path.join('reference', 'modules');
 const DEFAULT_PAGE_CLASS_PREFIX = 'docs-wiki';
 const THEME_STYLE_PRESETS = {
   clean: {
@@ -243,6 +248,15 @@ function buildFileSidebarGroups(scanResult) {
     .filter(Boolean);
 }
 
+function buildFeatureSidebarItems(scanResult) {
+  return (Array.isArray(scanResult.features) ? scanResult.features : [])
+    .map((feature) => ({
+      text: feature.title,
+      link: toVitePressLink(featurePagePath(feature.slug)),
+    }))
+    .sort((left, right) => left.text.localeCompare(right.text));
+}
+
 function renderVitePressConfig(scanResult) {
   const config = {
     title: `${scanResult.projectName} Docs Wiki`,
@@ -262,22 +276,34 @@ function renderVitePressConfig(scanResult) {
       },
       nav: [
         { text: 'Overview', link: '/' },
+        { text: 'Features', link: '/features/' },
         { text: 'Design', link: '/design/' },
-        { text: 'Modules', link: '/modules/' },
         { text: 'Workspaces', link: '/workspaces/' },
+        { text: 'Reference', link: '/reference/' },
       ],
       sidebar: {
         '/': [
+          createSidebarGroup('Features', [
+            { text: 'Feature Catalog', link: toVitePressLink(FEATURES_INDEX_FILE) },
+            ...buildFeatureSidebarItems(scanResult),
+          ]),
           createSidebarGroup('Overview', [
             { text: 'Project Overview', link: '/' },
             { text: 'Summary', link: toVitePressLink('SUMMARY.md') },
+            { text: 'Reference Index', link: toVitePressLink(REFERENCE_INDEX_FILE) },
             { text: 'Design Overview', link: toVitePressLink(DESIGN_INDEX_FILE) },
             { text: 'Basic Design', link: toVitePressLink(BASIC_DESIGN_FILE) },
             { text: 'Detail Design', link: toVitePressLink(DETAIL_DESIGN_FILE) },
             { text: 'API Contracts', link: toVitePressLink(API_CONTRACTS_FILE) },
             { text: 'Flow Catalog', link: toVitePressLink(FLOW_CATALOG_FILE) },
-            { text: 'Module Index', link: toVitePressLink(path.join('modules', 'index.md')) },
+            { text: 'Module Index', link: toVitePressLink(REFERENCE_MODULE_INDEX_FILE) },
             { text: 'Workspace Index', link: toVitePressLink(path.join('workspaces', 'index.md')) },
+          ]),
+        ].filter(Boolean),
+        '/features/': [
+          createSidebarGroup('Features', [
+            { text: 'Feature Catalog', link: toVitePressLink(FEATURES_INDEX_FILE) },
+            ...buildFeatureSidebarItems(scanResult),
           ]),
         ].filter(Boolean),
         '/design/': [
@@ -289,9 +315,15 @@ function renderVitePressConfig(scanResult) {
             { text: 'Flow Catalog', link: toVitePressLink(FLOW_CATALOG_FILE) },
           ]),
         ].filter(Boolean),
-        '/modules/': [
+        '/reference/': [
+          createSidebarGroup('Reference', [
+            { text: 'Reference Index', link: toVitePressLink(REFERENCE_INDEX_FILE) },
+            { text: 'Module Index', link: toVitePressLink(REFERENCE_MODULE_INDEX_FILE) },
+          ]),
+        ].filter(Boolean),
+        '/reference/modules/': [
           createSidebarGroup('Modules', [
-            { text: 'Module Index', link: toVitePressLink(path.join('modules', 'index.md')) },
+            { text: 'Module Index', link: toVitePressLink(REFERENCE_MODULE_INDEX_FILE) },
             ...getSortedModules(scanResult).map((module) => ({
               text: module.directory || '(root)',
               link: toVitePressLink(modulePagePath(module.directory)),
@@ -307,7 +339,7 @@ function renderVitePressConfig(scanResult) {
             })),
           ]),
         ].filter(Boolean),
-        '/files/': buildFileSidebarGroups(scanResult),
+        '/reference/files/': buildFileSidebarGroups(scanResult),
       },
       outline: {
         level: [2, 3],
@@ -440,6 +472,7 @@ function renderThemeStyles(output) {
     '}',
     '',
     '.docs-wiki--overview .vp-doc h2,',
+    '.docs-wiki--feature .vp-doc h2,',
     '.docs-wiki--module .vp-doc h2,',
     '.docs-wiki--workspace .vp-doc h2 {',
     '  display: inline-block;',
@@ -495,6 +528,7 @@ function renderThemeStyles(output) {
     '',
     '.docs-wiki--design .vp-doc h3,',
     '.docs-wiki--design-index .vp-doc h3,',
+    '.docs-wiki--feature .vp-doc h3,',
     '.docs-wiki--module .vp-doc h3,',
     '.docs-wiki--workspace .vp-doc h3 {',
     '  margin-top: 1.5rem;',
@@ -672,6 +706,47 @@ function renderSearchIndex(scanResult, output) {
   }));
 
   entries.push(buildSearchEntry({
+    id: 'page:features',
+    kind: 'feature-index',
+    title: 'Feature Catalog',
+    url: toVitePressLink(FEATURES_INDEX_FILE),
+    summary: `Feature-oriented documentation for ${scanResult.projectName}.`,
+    content: getFeatures(scanResult).map((feature) => `${feature.title} ${feature.summary}`).join(' '),
+    keywords: ['feature', 'catalog', 'user story', 'business flow', scanResult.projectName],
+  }));
+
+  for (const feature of getFeatures(scanResult)) {
+    entries.push(buildSearchEntry({
+      id: `feature:${feature.id}`,
+      kind: 'feature',
+      title: feature.title,
+      url: toVitePressLink(featurePagePath(feature.slug)),
+      summary: feature.ai && feature.ai.overview ? feature.ai.overview : feature.summary,
+      content: [
+        feature.summary,
+        feature.ai && feature.ai.overview ? feature.ai.overview : '',
+        ...(feature.actors || []),
+        ...(feature.userStories || []).map((story) => `${story.role} ${story.goal} ${story.benefit}`),
+        ...(feature.files || []).map((file) => `${file.path} ${file.role} ${file.reason}`),
+        ...(feature.apiContracts || []).map((endpoint) => `${endpoint.method} ${endpoint.path}`),
+        ...(feature.flows || []).map((flow) => `${flow.name} ${flow.goal}`),
+      ].join(' '),
+      keywords: [
+        'feature',
+        feature.title,
+        feature.domain,
+        ...(feature.actors || []),
+        ...(feature.files || []).map((file) => file.path),
+      ],
+      meta: {
+        domain: feature.domain,
+        action: feature.action || '',
+        fileCount: feature.files.length,
+      },
+    }));
+  }
+
+  entries.push(buildSearchEntry({
     id: 'page:design-index',
     kind: 'design',
     title: 'Design Overview',
@@ -733,6 +808,19 @@ function renderSearchIndex(scanResult, output) {
     summary: `Inferred business and request flows for ${scanResult.projectName}.`,
     content: (design.project.flows || []).map((flow) => `${flow.name} ${flow.goal}`).join(' '),
     keywords: ['flow', 'diagram', 'business flow', scanResult.projectName],
+  }));
+
+  entries.push(buildSearchEntry({
+    id: 'page:reference-index',
+    kind: 'reference-index',
+    title: 'Reference Index',
+    url: toVitePressLink(REFERENCE_INDEX_FILE),
+    summary: `Reference pages for modules and files in ${scanResult.projectName}.`,
+    content: [
+      ...(scanResult.directories || []).map((module) => module.directory || '(root)'),
+      ...(scanResult.files || []).map((file) => file.relativePath),
+    ].join(' '),
+    keywords: ['reference', 'module index', 'file reference', scanResult.projectName],
   }));
 
   for (const module of scanResult.directories) {
@@ -825,16 +913,32 @@ function renderSearchIndex(scanResult, output) {
   }, null, 2);
 }
 
-function filePagePath(relativePath) {
+function featurePagePath(slug) {
+  return path.join('features', `${slug}.md`);
+}
+
+function legacyFilePagePath(relativePath) {
   return path.join('files', `${relativePath}.md`);
 }
 
-function modulePagePath(directory) {
+function filePagePath(relativePath) {
+  return path.join(REFERENCE_FILE_ROOT, `${relativePath}.md`);
+}
+
+function legacyModulePagePath(directory) {
   if (!directory) {
     return path.join('modules', 'root.md');
   }
 
   return path.join('modules', `${directory}.md`);
+}
+
+function modulePagePath(directory) {
+  if (!directory) {
+    return path.join(REFERENCE_MODULE_ROOT, 'root.md');
+  }
+
+  return path.join(REFERENCE_MODULE_ROOT, `${directory}.md`);
 }
 
 function workspacePagePath(directory) {
@@ -903,6 +1007,23 @@ function getWorkspaceByDirectory(scanResult, directory) {
 function getWorkspaceForModule(scanResult, moduleDirectory) {
   const ordered = scanResult.workspaces.slice().sort((left, right) => right.directory.length - left.directory.length);
   return ordered.find((entry) => entry.directory === '' || moduleDirectory === entry.directory || moduleDirectory.startsWith(`${entry.directory}/`)) || ordered[0] || null;
+}
+
+function getFeatures(scanResult) {
+  return Array.isArray(scanResult.features) ? scanResult.features : [];
+}
+
+function getFeaturesForFile(scanResult, relativePath) {
+  return getFeatures(scanResult).filter((feature) => feature.files.some((file) => file.path === relativePath));
+}
+
+function getFeaturesForModule(scanResult, directory) {
+  return getFeatures(scanResult).filter((feature) => feature.files.some((file) => {
+    if (!directory) {
+      return true;
+    }
+    return file.path.startsWith(`${directory}/`) || file.path === directory;
+  }));
 }
 
 function getSymbolSummary(file, symbol) {
@@ -1073,14 +1194,20 @@ function renderSummary(scanResult) {
     '# Summary',
     '',
     '- [Project Overview](index.md)',
+    `- [Feature Catalog](${toPosixPath(FEATURES_INDEX_FILE)})`,
     '- [Design Overview](design/index.md)',
     '- [Basic Design](design/basic-design.md)',
     '- [Detail Design](design/detail-design.md)',
     '- [API Contracts](design/api-contracts.md)',
     '- [Flow Catalog](design/flows.md)',
-    '- [Module Index](modules/index.md)',
+    `- [Reference Index](${toPosixPath(REFERENCE_INDEX_FILE)})`,
+    `- [Module Index](${toPosixPath(REFERENCE_MODULE_INDEX_FILE)})`,
     '- [Workspace Index](workspaces/index.md)',
   ];
+
+  for (const feature of getFeatures(scanResult)) {
+    lines.push(`- [Feature: ${feature.title}](${toPosixPath(featurePagePath(feature.slug))})`);
+  }
 
   for (const workspace of scanResult.workspaces) {
     const title = workspace.directory || '(root)';
@@ -1112,6 +1239,7 @@ function renderSummary(scanResult) {
 
 function renderIndex(scanResult, output) {
   const lines = [];
+  const features = getFeatures(scanResult);
 
   if (output.includeAiSections && scanResult.ai && scanResult.ai.project && scanResult.ai.project.overview) {
     lines.push('## Overview', '', escapeAngleBracketsForVueMarkdown(scanResult.ai.project.overview), '');
@@ -1137,12 +1265,14 @@ function renderIndex(scanResult, output) {
 
   lines.push('', '## Navigation', '');
   lines.push('- [Summary](SUMMARY.md)');
+  lines.push(`- [Feature Catalog](${toPosixPath(FEATURES_INDEX_FILE)})`);
   lines.push('- [Design Overview](design/index.md)');
   lines.push('- [Basic Design](design/basic-design.md)');
   lines.push('- [Detail Design](design/detail-design.md)');
   lines.push('- [API Contracts](design/api-contracts.md)');
   lines.push('- [Flow Catalog](design/flows.md)');
-  lines.push('- [Module Index](modules/index.md)');
+  lines.push(`- [Reference Index](${toPosixPath(REFERENCE_INDEX_FILE)})`);
+  lines.push(`- [Module Index](${toPosixPath(REFERENCE_MODULE_INDEX_FILE)})`);
   lines.push('- [Workspace Index](workspaces/index.md)');
   lines.push(`- [Root Module](${toPosixPath(modulePagePath(''))})`);
   lines.push(`- [Root Workspace](${toPosixPath(workspacePagePath(''))})`);
@@ -1150,7 +1280,23 @@ function renderIndex(scanResult, output) {
   lines.push('', '## Language Breakdown', '');
   lines.push(...renderLanguageBreakdown(scanResult));
 
-  const rankedModules = getSortedModules(scanResult).slice(0, 12);
+  lines.push('', '## Feature Highlights', '');
+  if (features.length === 0) {
+    lines.push('No feature clusters were inferred yet.');
+  } else {
+    for (const feature of features.slice(0, 12)) {
+      lines.push(`- [${feature.title}](${toPosixPath(featurePagePath(feature.slug))}) - ${formatCount(feature.files.length, 'file')}, ${formatCount(feature.apiContracts.length, 'endpoint')}`);
+      lines.push(`  - ${escapeAngleBracketsForVueMarkdown(feature.summary)}`);
+    }
+  }
+
+  lines.push('', '## Workspaces', '');
+  for (const workspace of scanResult.workspaces) {
+    const title = workspace.directory || '(root)';
+    lines.push(`- [${workspace.name}](${toPosixPath(workspacePagePath(workspace.directory))}) - ${formatCount(workspace.fileCount, 'file')}, ${formatCount(workspace.symbolCount, 'symbol')}`);
+  }
+
+  const rankedModules = getSortedModules(scanResult).slice(0, 8);
   lines.push('', '## Key Modules', '');
   for (const module of rankedModules) {
     const title = module.directory || '(root)';
@@ -1159,12 +1305,6 @@ function renderIndex(scanResult, output) {
     if (reason) {
       lines.push(`  - ${escapeAngleBracketsForVueMarkdown(reason)}`);
     }
-  }
-
-  lines.push('', '## Workspaces', '');
-  for (const workspace of scanResult.workspaces) {
-    const title = workspace.directory || '(root)';
-    lines.push(`- [${workspace.name}](${toPosixPath(workspacePagePath(workspace.directory))}) - ${formatCount(workspace.fileCount, 'file')}, ${formatCount(workspace.symbolCount, 'symbol')}`);
   }
 
   if (output.includeAiSections && scanResult.ai && scanResult.ai.project && Array.isArray(scanResult.ai.project.architecture) && scanResult.ai.project.architecture.length > 0) {
@@ -1189,6 +1329,13 @@ function renderIndex(scanResult, output) {
   lines.push('');
   const featureCards = [
     {
+      icon: 'FEATURE',
+      title: 'Feature Pages',
+      details: `${formatCount(features.length, 'feature')} grouped across workspaces with user stories, flow diagrams, API contracts, and related files.`,
+      link: '/features/',
+      linkText: 'Browse features',
+    },
+    {
       icon: 'BDD',
       title: 'Basic Design',
       details: 'System intent, actors, primary capabilities, and context-level diagrams inferred from the codebase.',
@@ -1203,18 +1350,18 @@ function renderIndex(scanResult, output) {
       linkText: 'Open DDD',
     },
     {
-      icon: 'CODE',
-      title: 'Source Coverage',
-      details: `${formatCount(scanResult.totals.filesParsed, 'file')} and ${formatCount(scanResult.totals.symbols, 'symbol')} extracted across ${Object.keys(scanResult.languages || {}).length} supported languages.`,
-      link: '/SUMMARY',
-      linkText: 'Open summary',
-    },
-    {
       icon: 'API',
       title: 'API Contracts',
       details: `${formatCount(getApiContracts(scanResult).length, 'endpoint')} inferred with request and response shapes from route handlers.`,
       link: '/design/api-contracts',
       linkText: 'Inspect contracts',
+    },
+    {
+      icon: 'CODE',
+      title: 'Reference Docs',
+      details: `${formatCount(scanResult.totals.filesParsed, 'file')} and ${formatCount(scanResult.totals.symbols, 'symbol')} extracted across ${Object.keys(scanResult.languages || {}).length} supported languages.`,
+      link: '/reference/',
+      linkText: 'Open reference',
     },
     {
       icon: 'FLOW',
@@ -1229,8 +1376,8 @@ function renderIndex(scanResult, output) {
       details: output.includeAiSections && scanResult.ai && scanResult.ai.enabled
         ? `Summaries generated with ${scanResult.ai.provider}/${scanResult.ai.model}.`
         : `Template ${output.template} with theme preset ${output.themePreset} and ${scanResult.incremental.mode} rendering.`,
-      link: '/files/',
-      linkText: 'Inspect file docs',
+      link: '/reference/',
+      linkText: 'Inspect reference',
     },
   ];
 
@@ -1261,14 +1408,119 @@ function renderIndex(scanResult, output) {
             : 'Generated internal docs wiki',
           tagline: `${formatCount(scanResult.totals.filesParsed, 'file')} · ${formatCount(scanResult.totals.symbols, 'symbol')} · ${formatCount(scanResult.totals.directories, 'module')} · theme ${output.themePreset}`,
           actions: [
-            { theme: 'brand', text: 'Open Summary', link: '/SUMMARY' },
-            { theme: 'alt', text: 'Browse Modules', link: '/modules/' },
+            { theme: 'brand', text: 'Browse Features', link: '/features/' },
+            { theme: 'alt', text: 'Open Summary', link: '/SUMMARY' },
           ],
         },
         features: featureCards,
       },
     }),
     lines.join('\n'),
+  );
+}
+
+function renderFeatureIndex(scanResult) {
+  const features = getFeatures(scanResult);
+  const lines = [
+    '# Feature Catalog',
+    '',
+    `- Project: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    '- Summary: [SUMMARY](../SUMMARY.md)',
+    `- Reference: [Reference Index](../${toPosixPath(REFERENCE_INDEX_FILE)})`,
+    '',
+    '## Features',
+    '',
+  ];
+
+  if (features.length === 0) {
+    lines.push('No feature clusters were inferred from the current codebase.');
+  } else {
+    for (const feature of features) {
+      lines.push(`### [${feature.title}](${toPosixPath(path.relative('features', featurePagePath(feature.slug)))})`);
+      lines.push('');
+      lines.push(`- Domain: ${escapeAngleBracketsForVueMarkdown(feature.domainLabel || feature.domain)}`);
+      if (feature.actionLabel) {
+        lines.push(`- Action: ${escapeAngleBracketsForVueMarkdown(feature.actionLabel)}`);
+      }
+      lines.push(`- Scope: ${formatCount(feature.files.length, 'file')} · ${formatCount(feature.apiContracts.length, 'endpoint')} · ${formatCount(feature.workspaces.length, 'workspace')}`);
+      lines.push(`- Summary: ${escapeAngleBracketsForVueMarkdown(feature.summary)}`);
+      lines.push('');
+    }
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Feature Catalog',
+      description: `Feature-oriented documentation for ${scanResult.projectName}.`,
+      kind: 'feature-index',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(FEATURES_INDEX_FILE),
+        featureCount: features.length,
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderReferenceIndex(scanResult) {
+  const lines = [
+    '# Reference Index',
+    '',
+    `- Project: [${scanResult.projectName} Docs Wiki](../index.md)`,
+    `- Feature Catalog: [Features](../${toPosixPath(FEATURES_INDEX_FILE)})`,
+    `- Module Index: [Modules](./modules/index.md)`,
+    '- Workspace Index: [Workspaces](../workspaces/index.md)',
+    '',
+    '## Reference Layers',
+    '',
+    '- Feature pages are the primary docs surface for business understanding.',
+    '- Reference pages keep the module and file-level detail linked from each feature page.',
+    '',
+    '## Quick Links',
+    '',
+    `- [Root Module](${toPosixPath(path.relative('reference', modulePagePath('')))})`,
+    `- [Module Index](${toPosixPath(path.relative('reference', REFERENCE_MODULE_INDEX_FILE))})`,
+    `- [Workspace Index](../workspaces/index.md)`,
+  ];
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: 'Reference Index',
+      description: `Module and file reference pages for ${scanResult.projectName}.`,
+      kind: 'reference-index',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(REFERENCE_INDEX_FILE),
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
+function renderLegacyReferenceStub(scanResult, title, currentPath, targetPath) {
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title,
+      description: `${title} moved to the reference section.`,
+      kind: 'reference-redirect',
+      outline: false,
+      scanResult,
+      meta: {
+        page: toPosixPath(currentPath),
+        target: toPosixPath(targetPath),
+      },
+    }),
+    [
+      `# ${title}`,
+      '',
+      `This page moved to [${title}](${relativeLink(currentPath, targetPath)}).`,
+      '',
+      'Use the reference section for module and file-level detail, and the feature section for business-level docs.',
+      '',
+    ].join('\n'),
   );
 }
 
@@ -1544,13 +1796,198 @@ function renderFlowCatalog(scanResult, output) {
   );
 }
 
+function renderFeatureFileTable(currentPath, files) {
+  const lines = [
+    '| File | Workspace | Role | Why It Belongs |',
+    '| --- | --- | --- | --- |',
+  ];
+  for (const file of files) {
+    lines.push(`| [${file.path}](${relativeLink(currentPath, filePagePath(file.path))}) | ${escapeAngleBracketsForVueMarkdown(file.workspaceName || file.workspace || '(root)')} | ${escapeAngleBracketsForVueMarkdown(file.roleLabel || file.role)} | ${escapeAngleBracketsForVueMarkdown(file.reason)} |`);
+  }
+  return lines;
+}
+
+function renderFeatureEdgeCases(lines, feature) {
+  const aiCases = feature.ai && Array.isArray(feature.ai.errorCases) ? feature.ai.errorCases : [];
+  const inferredCases = [];
+
+  for (const endpoint of feature.apiContracts || []) {
+    for (const response of endpoint.responses || []) {
+      if (Number(response.status) >= 400) {
+        inferredCases.push({
+          case: `${endpoint.method} ${endpoint.path} can return ${response.status}`,
+          handling: response.bodyKeys && response.bodyKeys.length > 0
+            ? `The handler exposes ${response.bodyKeys.join(', ')} when the error path is taken.`
+            : 'The handler returns a non-success response path.',
+        });
+      }
+    }
+  }
+
+  const cases = aiCases.length > 0 ? aiCases : inferredCases.slice(0, 8);
+  if (cases.length === 0) {
+    lines.push('No edge cases were inferred from the clustered code.');
+    return;
+  }
+
+  for (const entry of cases) {
+    lines.push(`- ${escapeAngleBracketsForVueMarkdown(entry.case)} — ${escapeAngleBracketsForVueMarkdown(entry.handling)}`);
+  }
+}
+
+function renderFeaturePage(scanResult, feature, output) {
+  const currentPath = featurePagePath(feature.slug);
+  const showFlowchart = shouldRenderFlowchart(output);
+  const showSequence = shouldRenderSequence(output);
+  const lines = [
+    `# ${feature.title}`,
+    '',
+    `- Overview: [${scanResult.projectName} Docs Wiki](${relativeLink(currentPath, 'index.md')})`,
+    `- Feature catalog: [All features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
+    `- Reference: [Reference Index](${relativeLink(currentPath, REFERENCE_INDEX_FILE)})`,
+    '',
+    '## Overview',
+    '',
+    escapeAngleBracketsForVueMarkdown(feature.ai && feature.ai.overview ? feature.ai.overview : (feature.overview || feature.summary)),
+    '',
+    '## Actors & User Stories',
+    '',
+  ];
+
+  const userStories = feature.ai && Array.isArray(feature.ai.userStories) && feature.ai.userStories.length > 0
+    ? feature.ai.userStories
+    : (feature.userStories || []);
+
+  if (userStories.length === 0) {
+    lines.push(...renderStringList(feature.actors || []));
+  } else {
+    for (const story of userStories) {
+      lines.push(`### As ${escapeAngleBracketsForVueMarkdown(story.role)}`);
+      lines.push('');
+      lines.push(`- Goal: ${escapeAngleBracketsForVueMarkdown(story.goal)}`);
+      lines.push(`- Benefit: ${escapeAngleBracketsForVueMarkdown(story.benefit)}`);
+      if (Array.isArray(story.acceptance) && story.acceptance.length > 0) {
+        lines.push('', '#### Acceptance Criteria', '');
+        for (const item of story.acceptance) {
+          lines.push(`- ${escapeAngleBracketsForVueMarkdown(item)}`);
+        }
+      }
+      lines.push('');
+    }
+  }
+
+  lines.push('## Business Flows', '');
+  if (!feature.flows || feature.flows.length === 0) {
+    lines.push('No feature flows were inferred.');
+  } else {
+    const flowNarratives = new Map(
+      feature.ai && Array.isArray(feature.ai.flowNarratives)
+        ? feature.ai.flowNarratives.map((flow) => [flow.name, flow])
+        : [],
+    );
+    for (const flow of feature.flows) {
+      lines.push(`### ${escapeAngleBracketsForVueMarkdown(flow.name)}`);
+      lines.push('');
+      lines.push(escapeAngleBracketsForVueMarkdown(flow.goal || feature.summary));
+      lines.push('');
+      lines.push('#### Steps', '');
+      const narrative = flowNarratives.get(flow.name);
+      const steps = narrative && Array.isArray(narrative.steps) && narrative.steps.length > 0
+        ? narrative.steps
+        : (flow.steps || []);
+      for (const step of steps) {
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(step)}`);
+      }
+      if (showFlowchart && flow.mermaid) {
+        lines.push('', '#### Flow Diagram', '', renderMermaidDiagram(flow.mermaid), '');
+      }
+      if (showSequence && flow.sequenceMermaid) {
+        lines.push('', '#### Sequence Diagram', '', renderMermaidDiagram(flow.sequenceMermaid), '');
+      }
+    }
+  }
+
+  lines.push('', '## Basic Design', '');
+  lines.push(escapeAngleBracketsForVueMarkdown(
+    feature.ai && feature.ai.basicDesign ? feature.ai.basicDesign.context : feature.summary,
+  ));
+  lines.push('', '### Boundaries', '');
+  const boundaries = feature.ai && feature.ai.basicDesign && Array.isArray(feature.ai.basicDesign.boundaries) && feature.ai.basicDesign.boundaries.length > 0
+    ? feature.ai.basicDesign.boundaries
+    : [
+      `Workspaces: ${(feature.workspaces || []).map((workspace) => workspace.name || workspace.directory || '(root)').join(', ') || '(root)'}`,
+      `Entry points (FE): ${(feature.entryPoints && feature.entryPoints.fe ? feature.entryPoints.fe.join(', ') : '') || 'n/a'}`,
+      `Entry points (BE): ${(feature.entryPoints && feature.entryPoints.be ? feature.entryPoints.be.join(', ') : '') || 'n/a'}`,
+    ];
+  lines.push(...renderStringList(boundaries));
+  lines.push('', '### Context Diagram', '', renderMermaidDiagram(feature.contextDiagram), '');
+
+  lines.push('## Detail Design', '');
+  if (feature.ai && feature.ai.detailDesign) {
+    lines.push(`- Data model: ${escapeAngleBracketsForVueMarkdown(feature.ai.detailDesign.dataModel)}`);
+    lines.push(`- State management: ${escapeAngleBracketsForVueMarkdown(feature.ai.detailDesign.stateManagement)}`);
+    if (Array.isArray(feature.ai.detailDesign.components) && feature.ai.detailDesign.components.length > 0) {
+      lines.push('', '### Components', '');
+      for (const component of feature.ai.detailDesign.components) {
+        lines.push(`- ${escapeAngleBracketsForVueMarkdown(component.name)} (${escapeAngleBracketsForVueMarkdown(component.layer)}) — ${escapeAngleBracketsForVueMarkdown(component.responsibility)}`);
+      }
+    }
+  } else {
+    lines.push(`- Data stores: ${feature.dataStores.length > 0 ? feature.dataStores.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ') : 'n/a'}`);
+    lines.push(`- Integrations: ${feature.integrations.length > 0 ? feature.integrations.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ') : 'n/a'}`);
+  }
+  lines.push('', '### Component Diagram', '', renderMermaidDiagram(feature.componentDiagram), '');
+
+  lines.push('## API Contracts', '');
+  if (feature.apiContracts.length === 0) {
+    lines.push('No API contracts were linked to this feature.');
+  } else {
+    for (const endpoint of feature.apiContracts) {
+      renderApiEndpoint(lines, endpoint, currentPath, getApiEndpointDesign(scanResult, endpoint.id), output);
+    }
+  }
+
+  lines.push('', '## Edge Cases & Error Handling', '');
+  renderFeatureEdgeCases(lines, feature);
+
+  lines.push('', '## Related Files', '');
+  lines.push(...renderFeatureFileTable(currentPath, feature.files));
+
+  if (feature.ai && Array.isArray(feature.ai.openQuestions) && feature.ai.openQuestions.length > 0) {
+    lines.push('', '## Open Questions', '');
+    for (const question of feature.ai.openQuestions) {
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(question)}`);
+    }
+  }
+
+  return withFrontmatter(
+    buildVitePressFrontmatter({
+      title: feature.title,
+      description: feature.ai && feature.ai.overview ? feature.ai.overview : feature.summary,
+      kind: 'feature',
+      outline: [2, 3],
+      scanResult,
+      meta: {
+        page: toPosixPath(featurePagePath(feature.slug)),
+        featureId: feature.id,
+        domain: feature.domain,
+        action: feature.action || '',
+        fileCount: feature.files.length,
+      },
+    }),
+    lines.join('\n'),
+  );
+}
+
 function renderModuleIndex(scanResult) {
+  const currentPath = REFERENCE_MODULE_INDEX_FILE;
   const lines = [
     '# Module Index',
     '',
-    `- Project: [${scanResult.projectName} Docs Wiki](../index.md)`,
-    '- Summary: [SUMMARY](../SUMMARY.md)',
-    '- Workspaces: [Workspace Index](../workspaces/index.md)',
+    `- Project: [${scanResult.projectName} Docs Wiki](${relativeLink(currentPath, 'index.md')})`,
+    `- Summary: [SUMMARY](${relativeLink(currentPath, 'SUMMARY.md')})`,
+    `- Feature Catalog: [Features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
+    `- Workspaces: [Workspace Index](${relativeLink(currentPath, path.join('workspaces', 'index.md'))})`,
     '',
     '## Modules',
     '',
@@ -1558,7 +1995,7 @@ function renderModuleIndex(scanResult) {
 
   for (const module of getSortedModules(scanResult)) {
     const title = module.directory || '(root)';
-    lines.push(`- [${title}](${toPosixPath(path.relative('modules', modulePagePath(module.directory)))}) - ${formatCount(module.fileCount, 'file')}, ${formatCount(module.symbolCount, 'symbol')}`);
+    lines.push(`- [${title}](${relativeLink(currentPath, modulePagePath(module.directory))}) - ${formatCount(module.fileCount, 'file')}, ${formatCount(module.symbolCount, 'symbol')}`);
   }
 
   lines.push('');
@@ -1570,7 +2007,7 @@ function renderModuleIndex(scanResult) {
       outline: [2, 3],
       scanResult,
       meta: {
-        page: 'modules/index',
+        page: toPosixPath(REFERENCE_MODULE_INDEX_FILE),
         moduleCount: scanResult.totals.directories,
       },
     }),
@@ -1584,7 +2021,8 @@ function renderWorkspaceIndex(scanResult) {
     '',
     `- Project: [${scanResult.projectName} Docs Wiki](../index.md)`,
     '- Summary: [SUMMARY](../SUMMARY.md)',
-    '- Modules: [Module Index](../modules/index.md)',
+    `- Feature Catalog: [Features](../${toPosixPath(FEATURES_INDEX_FILE)})`,
+    `- Modules: [Module Index](../${toPosixPath(REFERENCE_MODULE_INDEX_FILE)})`,
     '',
     '## Workspaces',
     '',
@@ -1617,12 +2055,14 @@ function renderModulePage(scanResult, module, output) {
   const workspace = getWorkspaceForModule(scanResult, module.directory);
   const moduleDesign = getModuleDesign(scanResult, module.directory);
   const moduleApiContracts = getModuleApiContracts(scanResult, module.directory);
+  const relatedFeatures = getFeaturesForModule(scanResult, module.directory);
   const lines = [
     `# Module ${module.directory || '(root)'}`,
     '',
     `- Overview: [${scanResult.projectName} Docs Wiki](${relativeLink(currentPath, 'index.md')})`,
     `- Summary: [SUMMARY](${relativeLink(currentPath, 'SUMMARY.md')})`,
-    `- Module index: [All modules](${relativeLink(currentPath, path.join('modules', 'index.md'))})`,
+    `- Feature catalog: [All features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
+    `- Module index: [All modules](${relativeLink(currentPath, REFERENCE_MODULE_INDEX_FILE)})`,
     `- Workspace index: [All workspaces](${relativeLink(currentPath, path.join('workspaces', 'index.md'))})`,
     '',
     '## Snapshot',
@@ -1639,6 +2079,13 @@ function renderModulePage(scanResult, module, output) {
   const reason = output.includeAiSections ? getKeyModuleReason(scanResult, module.directory) : null;
   if (reason) {
     lines.push('', '## Why It Matters', '', escapeAngleBracketsForVueMarkdown(reason));
+  }
+
+  if (relatedFeatures.length > 0) {
+    lines.push('', '## Related Features', '');
+    for (const feature of relatedFeatures) {
+      lines.push(`- [${feature.title}](${relativeLink(currentPath, featurePagePath(feature.slug))}) - ${escapeAngleBracketsForVueMarkdown(feature.summary)}`);
+    }
   }
 
   if (moduleDesign) {
@@ -1758,13 +2205,15 @@ function renderWorkspacePage(scanResult, workspace, output) {
   const currentPath = workspacePagePath(workspace.directory);
   const workspaceDesign = getWorkspaceDesign(scanResult, workspace.directory);
   const workspaceApiContracts = getWorkspaceApiContracts(scanResult, workspace.directory);
+  const relatedFeatures = getFeatures(scanResult).filter((feature) => feature.workspaces.some((entry) => entry.directory === workspace.directory));
   const lines = [
     `# Workspace ${workspace.name}`,
     '',
     `- Overview: [${scanResult.projectName} Docs Wiki](${relativeLink(currentPath, 'index.md')})`,
     `- Summary: [SUMMARY](${relativeLink(currentPath, 'SUMMARY.md')})`,
     `- Workspace index: [All workspaces](${relativeLink(currentPath, path.join('workspaces', 'index.md'))})`,
-    `- Module index: [All modules](${relativeLink(currentPath, path.join('modules', 'index.md'))})`,
+    `- Feature catalog: [All features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
+    `- Module index: [All modules](${relativeLink(currentPath, REFERENCE_MODULE_INDEX_FILE)})`,
     '',
     '## Snapshot',
     '',
@@ -1780,6 +2229,13 @@ function renderWorkspacePage(scanResult, workspace, output) {
   }
   if (workspace.description) {
     lines.push('', '## Description', '', workspace.description);
+  }
+
+  if (relatedFeatures.length > 0) {
+    lines.push('', '## Related Features', '');
+    for (const feature of relatedFeatures) {
+      lines.push(`- [${feature.title}](${relativeLink(currentPath, featurePagePath(feature.slug))}) - ${escapeAngleBracketsForVueMarkdown(feature.summary)}`);
+    }
   }
 
   if (workspaceDesign) {
@@ -1853,11 +2309,13 @@ function renderWorkspacePage(scanResult, workspace, output) {
 function renderFilePage(scanResult, file, output) {
   const currentPath = filePagePath(file.relativePath);
   const workspace = getWorkspaceByDirectory(scanResult, file.workspace ? file.workspace.directory : '');
+  const relatedFeatures = getFeaturesForFile(scanResult, file.relativePath);
   const lines = [
     `# ${file.relativePath}`,
     '',
     `- Overview: [${scanResult.projectName} Docs Wiki](${relativeLink(currentPath, 'index.md')})`,
     `- Summary: [SUMMARY](${relativeLink(currentPath, 'SUMMARY.md')})`,
+    `- Feature catalog: [All features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
     `- Module: [${file.directory || '(root)'}](${relativeLink(currentPath, modulePagePath(file.directory))})`,
     `- Workspace: [${workspace ? workspace.name : (file.workspace ? file.workspace.name : '(root)')}](${relativeLink(currentPath, workspacePagePath(file.workspace ? file.workspace.directory : ''))})`,
     '',
@@ -1868,6 +2326,13 @@ function renderFilePage(scanResult, file, output) {
     `- Lines: ${file.lineCount}`,
     `- Symbols: ${file.symbols.length}`,
   ];
+
+  if (relatedFeatures.length > 0) {
+    lines.push('', '## Related Features', '');
+    for (const feature of relatedFeatures) {
+      lines.push(`- [${feature.title}](${relativeLink(currentPath, featurePagePath(feature.slug))}) - ${escapeAngleBracketsForVueMarkdown(feature.summary)}`);
+    }
+  }
 
   if (output.includeAiSections && file.ai && file.ai.summary) {
     lines.push('', '## AI Summary', '', escapeAngleBracketsForVueMarkdown(file.ai.summary));
@@ -2025,15 +2490,19 @@ function renderVitePressSchema() {
           schemaVersion: { type: 'string' },
           kind: {
             type: 'string',
-            enum: ['summary', 'overview', 'design-index', 'design', 'module-index', 'workspace-index', 'module', 'workspace', 'file'],
+            enum: ['summary', 'overview', 'feature-index', 'feature', 'design-index', 'design', 'reference-index', 'reference-redirect', 'module-index', 'workspace-index', 'module', 'workspace', 'file'],
           },
           project: { type: 'string' },
           template: { type: 'string' },
           themePreset: { type: 'string' },
           generatedAt: { type: 'string' },
           page: { type: 'string' },
+          target: { type: 'string' },
           rootDir: { type: 'string' },
           directory: { type: 'string' },
+          featureId: { type: 'string' },
+          domain: { type: 'string' },
+          action: { type: 'string' },
           packageFile: { type: 'string' },
           relativePath: { type: 'string' },
           absolutePath: { type: 'string' },
@@ -2043,6 +2512,7 @@ function renderVitePressSchema() {
           fileCount: { type: 'number' },
           moduleCount: { type: 'number' },
           workspaceCount: { type: 'number' },
+          featureCount: { type: 'number' },
           symbolCount: { type: 'number' },
           languages: {
             type: 'array',
@@ -2103,7 +2573,11 @@ async function writeDocs(scanResult, options = {}) {
   await ensureDir(path.join(outputRoot, '.vitepress'));
   await ensureDir(path.join(outputRoot, '.vitepress', 'theme'));
   await ensureDir(path.join(outputRoot, 'public'));
+  await ensureDir(path.join(outputRoot, 'features'));
   await ensureDir(path.join(outputRoot, 'design'));
+  await ensureDir(path.join(outputRoot, 'reference'));
+  await ensureDir(path.join(outputRoot, 'reference', 'files'));
+  await ensureDir(path.join(outputRoot, 'reference', 'modules'));
   await ensureDir(path.join(outputRoot, 'files'));
   await ensureDir(path.join(outputRoot, 'modules'));
   await ensureDir(path.join(outputRoot, 'workspaces'));
@@ -2113,6 +2587,7 @@ async function writeDocs(scanResult, options = {}) {
   for (const relativePath of previousFiles) {
     if (!currentFiles.has(relativePath)) {
       await removeFileIfExists(path.join(outputRoot, filePagePath(relativePath)));
+      await removeFileIfExists(path.join(outputRoot, legacyFilePagePath(relativePath)));
     }
   }
 
@@ -2121,6 +2596,7 @@ async function writeDocs(scanResult, options = {}) {
   for (const directory of previousModules) {
     if (!currentModules.has(directory)) {
       await removeFileIfExists(path.join(outputRoot, modulePagePath(directory)));
+      await removeFileIfExists(path.join(outputRoot, legacyModulePagePath(directory)));
     }
   }
   const currentWorkspaces = new Set(scanResult.workspaces.map((entry) => entry.directory));
@@ -2128,6 +2604,14 @@ async function writeDocs(scanResult, options = {}) {
   for (const directory of previousWorkspaces) {
     if (!currentWorkspaces.has(directory)) {
       await removeFileIfExists(path.join(outputRoot, workspacePagePath(directory)));
+    }
+  }
+
+  const currentFeatures = new Set(getFeatures(scanResult).map((feature) => feature.slug));
+  const previousFeatures = new Set(previousManifest && Array.isArray(previousManifest.features) ? previousManifest.features.map((feature) => feature.slug || feature.id) : []);
+  for (const slug of previousFeatures) {
+    if (!currentFeatures.has(slug)) {
+      await removeFileIfExists(path.join(outputRoot, featurePagePath(slug)));
     }
   }
 
@@ -2144,7 +2628,8 @@ async function writeDocs(scanResult, options = {}) {
   const moduleWriteCount = scanResult.directories.filter((module) => changedModuleSet.has(module.directory)).length;
   const workspaceWriteCount = scanResult.workspaces.filter((workspace) => changedWorkspaceSet.has(workspace.directory)).length;
   const fileWriteCount = scanResult.files.filter((file) => changedFileSet.has(file.relativePath)).length;
-  const writeTotal = 15 + moduleWriteCount + workspaceWriteCount + fileWriteCount;
+  const featureWriteCount = getFeatures(scanResult).length;
+  const writeTotal = 18 + featureWriteCount + moduleWriteCount + workspaceWriteCount + (fileWriteCount * 2);
   let writeStep = 0;
 
   function tickWrite(detail) {
@@ -2161,6 +2646,8 @@ async function writeDocs(scanResult, options = {}) {
   tickWrite('SUMMARY.md');
   await writeFileIfChanged(path.join(outputRoot, 'index.md'), renderIndex(scanResult, output));
   tickWrite('index.md');
+  await writeFileIfChanged(path.join(outputRoot, FEATURES_INDEX_FILE), renderFeatureIndex(scanResult));
+  tickWrite('features/index.md');
   await writeFileIfChanged(path.join(outputRoot, DESIGN_INDEX_FILE), renderDesignIndex(scanResult));
   tickWrite('design/index.md');
   await writeFileIfChanged(path.join(outputRoot, BASIC_DESIGN_FILE), renderBasicDesign(scanResult));
@@ -2183,17 +2670,37 @@ async function writeDocs(scanResult, options = {}) {
   tickWrite('search-index.json');
   await writeFileIfChanged(path.join(outputRoot, THEME_STYLES_FILE), renderThemeStyles(output));
   tickWrite('public/docs-wiki.css');
-  await writeFileIfChanged(path.join(outputRoot, 'modules', 'index.md'), renderModuleIndex(scanResult));
+  await writeFileIfChanged(path.join(outputRoot, REFERENCE_INDEX_FILE), renderReferenceIndex(scanResult));
+  tickWrite('reference/index.md');
+  await writeFileIfChanged(path.join(outputRoot, REFERENCE_MODULE_INDEX_FILE), renderModuleIndex(scanResult));
+  tickWrite('reference/modules/index.md');
+  await writeFileIfChanged(path.join(outputRoot, 'modules', 'index.md'), renderLegacyReferenceStub(scanResult, 'Module Index', path.join('modules', 'index.md'), REFERENCE_MODULE_INDEX_FILE));
   tickWrite('modules/index.md');
   await writeFileIfChanged(path.join(outputRoot, 'workspaces', 'index.md'), renderWorkspaceIndex(scanResult));
   tickWrite('workspaces/index.md');
+
+  for (const feature of getFeatures(scanResult)) {
+    const outputPath = path.join(outputRoot, featurePagePath(feature.slug));
+    await writeFileIfChanged(outputPath, renderFeaturePage(scanResult, feature, output));
+    tickWrite(`features/${feature.slug}.md`);
+  }
 
   for (const module of scanResult.directories) {
     if (!changedModuleSet.has(module.directory)) {
       continue;
     }
-    const outputPath = path.join(outputRoot, modulePagePath(module.directory));
-    await writeFileIfChanged(outputPath, renderModulePage(scanResult, module, output));
+    const content = renderModulePage(scanResult, module, output);
+    await writeFileIfChanged(path.join(outputRoot, modulePagePath(module.directory)), content);
+    tickWrite(`reference/modules/${module.directory || 'root'}.md`);
+    await writeFileIfChanged(
+      path.join(outputRoot, legacyModulePagePath(module.directory)),
+      renderLegacyReferenceStub(
+        scanResult,
+        `Module ${module.directory || '(root)'}`,
+        legacyModulePagePath(module.directory),
+        modulePagePath(module.directory),
+      ),
+    );
     tickWrite(`modules/${module.directory || 'root'}.md`);
   }
 
@@ -2210,8 +2717,18 @@ async function writeDocs(scanResult, options = {}) {
     if (!changedFileSet.has(file.relativePath)) {
       continue;
     }
-    const outputPath = path.join(outputRoot, filePagePath(file.relativePath));
-    await writeFileIfChanged(outputPath, renderFilePage(scanResult, file, output));
+    const content = renderFilePage(scanResult, file, output);
+    await writeFileIfChanged(path.join(outputRoot, filePagePath(file.relativePath)), content);
+    tickWrite(`reference/files/${file.relativePath}.md`);
+    await writeFileIfChanged(
+      path.join(outputRoot, legacyFilePagePath(file.relativePath)),
+      renderLegacyReferenceStub(
+        scanResult,
+        file.relativePath,
+        legacyFilePagePath(file.relativePath),
+        filePagePath(file.relativePath),
+      ),
+    );
     tickWrite(file.relativePath);
   }
 

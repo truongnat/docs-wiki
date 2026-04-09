@@ -413,6 +413,8 @@ These are still documented as files, but without full AST-based symbol extractio
 
 Common generated directories are ignored automatically, including build caches, `node_modules`, `.next`, `.dart_tool`, iOS Pods, Android Gradle outputs, and the generated `docs-wiki/` folder itself.
 
+Hidden directories are ignored by default as well, for example `.github`, `.config`, `.cursor`, `.agents`, plus unhidden `agent/` and `agents/` helper folders.
+
 ## VitePress Integration
 
 Generated docs are VitePress-ready out of the box.

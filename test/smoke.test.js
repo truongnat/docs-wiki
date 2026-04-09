@@ -857,26 +857,54 @@ test('docs-wiki indexes .dart files as Dart (Flutter) plain-text pages', async (
   assert.ok(Array.isArray(dart.symbols) && dart.symbols.length >= 1);
 });
 
-test('docs-wiki discovers source files under hidden directories (dot segments)', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-dot-'));
+test('docs-wiki ignores hidden directories and agent folders by default', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-ignore-dirs-'));
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
 
   await fs.writeFile(
     path.join(tempDir, 'package.json'),
-    JSON.stringify({ name: 'dot-app', version: '1.0.0' }, null, 2),
+    JSON.stringify({ name: 'ignore-app', version: '1.0.0' }, null, 2),
     'utf8',
   );
   await fs.mkdir(path.join(tempDir, '.config'), { recursive: true });
+  await fs.mkdir(path.join(tempDir, '.github'), { recursive: true });
+  await fs.mkdir(path.join(tempDir, '.agents'), { recursive: true });
+  await fs.mkdir(path.join(tempDir, 'agents'), { recursive: true });
+  await fs.mkdir(path.join(tempDir, 'src'), { recursive: true });
   await fs.writeFile(
     path.join(tempDir, '.config', 'routes.ts'),
     'export const routes: string[] = [];\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(tempDir, '.github', 'workflow.ts'),
+    'export const workflow = [];\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(tempDir, '.agents', 'memory.ts'),
+    'export const memory = [];\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(tempDir, 'agents', 'helper.ts'),
+    'export const helper = [];\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(tempDir, 'src', 'index.ts'),
+    'export const ok = true;\n',
     'utf8',
   );
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
   const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
-  assert.ok(manifest.files.some((f) => f.relativePath === '.config/routes.ts'));
+  assert.ok(manifest.files.some((f) => f.relativePath === 'src/index.ts'));
+  assert.ok(!manifest.files.some((f) => f.relativePath === '.config/routes.ts'));
+  assert.ok(!manifest.files.some((f) => f.relativePath === '.github/workflow.ts'));
+  assert.ok(!manifest.files.some((f) => f.relativePath === '.agents/memory.ts'));
+  assert.ok(!manifest.files.some((f) => f.relativePath === 'agents/helper.ts'));
 });
 
 test('docs-wiki incremental mode rewrites only changed file pages when content changes', async () => {

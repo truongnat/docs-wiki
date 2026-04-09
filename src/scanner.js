@@ -6,7 +6,10 @@ const { hashText } = require('./hash');
 
 const DEFAULT_IGNORES = [
   '**/.git/**',
+  '**/.*/**',
   '**/node_modules/**',
+  '**/agent/**',
+  '**/agents/**',
   '**/dist/**',
   '**/build/**',
   '**/coverage/**',

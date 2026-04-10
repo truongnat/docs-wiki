@@ -13,7 +13,8 @@
   ],
   "scripts": {
     "start": "node ./bin/docs-wiki.js",
-    "test": "node --test"
+    "test": "node --test",
+    "hotfix-site": "node ./bin/docs-wiki.js hotfix-site"
   },
   "keywords": [
     "docs",

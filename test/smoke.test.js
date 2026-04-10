@@ -942,6 +942,21 @@ test('docs-wiki incremental mode rewrites only changed file pages when content c
   assert.ok(manifest.incremental.reusedFiles.includes('src/index.ts'));
 });
 
+test('docs-wiki hotfix-site patches theme and mermaid without rescanning', async () => {
+  const tempDir = await createFixture();
+  const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
+  const sitePath = path.join(tempDir, 'docs-wiki');
+
+  await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
+  await execFileAsync(process.execPath, [binPath, 'hotfix-site', '--site', sitePath], { cwd: tempDir });
+
+  const theme = await fs.readFile(path.join(sitePath, '.vitepress', 'theme', 'index.mjs'), 'utf8');
+  const mermaid = await fs.readFile(path.join(sitePath, 'public', 'mermaid.min.js'), 'utf8');
+  assert.match(theme, /renderMermaidDiagrams/);
+  assert.match(theme, /language-mermaid/);
+  assert.match(mermaid, /mermaid/);
+});
+
 test('docs-wiki encodes bracketed file routes so VitePress does not treat them as dynamic pages', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-brackets-'));
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');

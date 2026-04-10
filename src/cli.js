@@ -20,6 +20,7 @@ Usage:
   npx docs-wiki build-site
   npx docs-wiki preview
   npx docs-wiki check
+  npx docs-wiki hotfix-site
   npx docs-wiki init-deploy --target github-pages
   npx docs-wiki init-deploy --target vercel
   npx docs-wiki --root ./path/to/project --out-dir docs-wiki
@@ -30,6 +31,7 @@ Options:
   --root <path>         Root directory to scan. Defaults to the current working directory.
   --config <path>       Path to docs-wiki.config.json. Defaults to <root>/docs-wiki.config.json.
   --out-dir <path>      Output directory inside the scanned project. Defaults to docs-wiki.
+  --site <path>         With hotfix-site: path to generated site folder (contains .vitepress). Overrides --root/--out-dir.
   --port <n>            Port used by VitePress serve/preview.
   --open [path]         Open the browser when starting VitePress dev.
   --base <path>         Public base path forwarded to VitePress.
@@ -94,9 +96,10 @@ function parseArgs(argv) {
     debugFeatures: false,
     verbose: false,
     progress: undefined,
+    hotfixSitePath: null,
   };
 
-  const commandNames = new Set(['serve', 'dev', 'preview', 'build-site', 'check', 'init-deploy']);
+  const commandNames = new Set(['serve', 'dev', 'preview', 'build-site', 'check', 'init-deploy', 'hotfix-site']);
 
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -125,6 +128,12 @@ function parseArgs(argv) {
 
     if (current === '--out-dir') {
       options.outDir = argv[index + 1] || undefined;
+      index += 1;
+      continue;
+    }
+
+    if (current === '--site') {
+      options.hotfixSitePath = path.resolve(argv[index + 1] || '');
       index += 1;
       continue;
     }
@@ -564,6 +573,22 @@ async function runCheck(cliOptions) {
   }
 }
 
+async function runHotfixSite(cliOptions) {
+  const loadedConfig = await loadUserConfig(cliOptions.root, cliOptions.configPath);
+  const options = resolveOptions(cliOptions.root, cliOptions, loadedConfig);
+  const siteRoot = cliOptions.hotfixSitePath
+    ? path.resolve(cliOptions.hotfixSitePath)
+    : path.resolve(options.root, options.outDir);
+
+  const { applySiteHotfix } = require('./siteHotfix');
+  const result = await applySiteHotfix(siteRoot);
+
+  console.log('docs-wiki hotfix-site: patched VitePress client files (no codebase re-scan).');
+  console.log(`  theme:   ${result.themePath}`);
+  console.log(`  mermaid: ${result.mermaidPath}`);
+  console.log('Restart `docs-wiki serve` or run `docs-wiki build-site` to pick up changes.');
+}
+
 async function runCli(argv) {
   const cliOptions = parseArgs(argv);
   if (cliOptions.command === 'serve' && cliOptions.watch === undefined) {
@@ -577,6 +602,11 @@ async function runCli(argv) {
 
   if (cliOptions.command === 'check') {
     await runCheck(cliOptions);
+    return;
+  }
+
+  if (cliOptions.command === 'hotfix-site') {
+    await runHotfixSite(cliOptions);
     return;
   }
 

@@ -59,6 +59,20 @@ Preview the production build:
 npx docs-wiki preview
 ```
 
+### Hotfix the generated site (no re-scan)
+
+After a long `docs-wiki` run, you can patch **only** the VitePress client bundle (theme entry + `public/mermaid.min.js`) to match your installed `docs-wiki` version—**without** re-analyzing the repo:
+
+```bash
+# Default: `<cwd>/docs-wiki` (respects `docs-wiki.config.json` `outDir` when resolved from `--root`)
+npx docs-wiki hotfix-site
+
+# Explicit path to the generated folder (contains `.vitepress/` and `public/`)
+npx docs-wiki hotfix-site --site /path/to/project/docs-wiki
+```
+
+Then restart `docs-wiki serve` or run `docs-wiki build-site`. This is intended for fixes such as Mermaid rendering updates; it does **not** regenerate Markdown.
+
 Run against another directory:
 
 ```bash

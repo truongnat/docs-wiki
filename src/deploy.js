@@ -1,7 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { DEFAULT_OUT_DIR } = require('./config');
 
-function renderGitHubPagesWorkflow({ outDir = 'docs-wiki', branch = 'main' }) {
+function renderGitHubPagesWorkflow({ outDir = DEFAULT_OUT_DIR, branch = 'main' }) {
   const distPath = `${outDir}/.vitepress/dist`;
 
   return [
@@ -38,7 +39,7 @@ function renderGitHubPagesWorkflow({ outDir = 'docs-wiki', branch = 'main' }) {
     '      - name: Configure Pages',
     '        uses: actions/configure-pages@v5',
     '      - name: Build docs-wiki site',
-    `        run: npx --yes docs-wiki build-site --base "$DOCS_BASE"`,
+    `        run: npx --yes github:truongnat/docs-wiki build-site --base "$DOCS_BASE"`,
     '      - name: Upload artifact',
     '        uses: actions/upload-pages-artifact@v4',
     '        with:',
@@ -58,11 +59,11 @@ function renderGitHubPagesWorkflow({ outDir = 'docs-wiki', branch = 'main' }) {
   ].join('\n');
 }
 
-function renderVercelConfig({ outDir = 'docs-wiki' }) {
+function renderVercelConfig({ outDir = DEFAULT_OUT_DIR }) {
   return JSON.stringify({
     $schema: 'https://openapi.vercel.sh/vercel.json',
     framework: null,
-    buildCommand: 'npx --yes docs-wiki build-site',
+    buildCommand: 'npx --yes github:truongnat/docs-wiki build-site',
     outputDirectory: `${outDir}/.vitepress/dist`,
     cleanUrls: true,
   }, null, 2);
@@ -86,7 +87,7 @@ async function writeScaffoldFile(targetPath, content, overwrite) {
 
 async function scaffoldDeploy(rootDir, options = {}) {
   const target = options.target;
-  const outDir = options.outDir || 'docs-wiki';
+  const outDir = options.outDir || DEFAULT_OUT_DIR;
   const overwrite = Boolean(options.overwrite);
   const branch = options.branch || 'main';
   const written = [];

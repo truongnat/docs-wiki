@@ -3,6 +3,7 @@ const path = require('node:path');
 const fg = require('fast-glob');
 const { LANGUAGE_CONFIGS, createParser } = require('./languages');
 const { hashText } = require('./hash');
+const { DEFAULT_OUT_DIR } = require('./config');
 
 const DEFAULT_IGNORES = [
   '**/.git/**',
@@ -63,7 +64,14 @@ function buildPatterns(includePatterns) {
 }
 
 function normalizeOutDir(outDir) {
-  return outDir.replace(/^[./]+/, '').replace(/\\/g, '/').replace(/\/$/, '');
+  if (!outDir) {
+    return '';
+  }
+  let s = String(outDir).replace(/\\/g, '/');
+  if (s.startsWith('./')) {
+    s = s.slice(2);
+  }
+  return s.replace(/\/$/, '');
 }
 
 async function discoverFiles(rootDir, outDir, maxFiles = Infinity, includePatterns = [], customIgnores = []) {
@@ -1339,7 +1347,7 @@ function parseFileFromSource(rootDir, relativePath, source) {
 }
 
 async function scanProject(rootDir, options = {}) {
-  const outDir = options.outDir || 'docs-wiki';
+  const outDir = options.outDir || DEFAULT_OUT_DIR;
   const maxFiles = Number.isFinite(options.maxFiles) ? options.maxFiles : Infinity;
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const previousManifest = options.incremental ? await readPreviousManifest(rootDir, outDir) : null;

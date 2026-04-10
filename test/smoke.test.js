@@ -14,6 +14,9 @@ const { createVitePressArgs } = require('../src/vitepress');
 
 const execFileAsync = promisify(execFile);
 
+/** Default generated wiki output directory (matches config DEFAULT_OUT_DIR). */
+const WIKI_DIR = '.docs-wiki';
+
 async function createFixture() {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-'));
   const sourceDir = path.join(tempDir, 'src', 'utils');
@@ -263,14 +266,14 @@ async function createTypedApiFixture() {
 }
 
 async function readManifest(tempDir) {
-  return JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  return JSON.parse(await fs.readFile(path.join(tempDir, WIKI_DIR, 'manifest.json'), 'utf8'));
 }
 
 async function readFeaturePage(tempDir, matcher) {
   const manifest = await readManifest(tempDir);
   const feature = manifest.features.find((entry) => matcher(entry));
   assert.ok(feature, 'expected a matching feature in manifest');
-  const featureMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'features', `${feature.slug || feature.id}.md`), 'utf8');
+  const featureMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'features', `${feature.slug || feature.id}.md`), 'utf8');
   return { manifest, feature, featureMarkdown };
 }
 
@@ -280,31 +283,35 @@ test('docs-wiki scans the cwd and writes summary, feature, reference, and file d
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
+  const gitignoreText = await fs.readFile(path.join(tempDir, '.gitignore'), 'utf8');
+  assert.match(gitignoreText, /# docs-wiki generated output/);
+  assert.match(gitignoreText, /\.docs-wiki\//);
+
   const manifest = await readManifest(tempDir);
-  const summaryPath = path.join(tempDir, 'docs-wiki', 'SUMMARY.md');
-  const indexPath = path.join(tempDir, 'docs-wiki', 'index.md');
-  const featureIndexPath = path.join(tempDir, 'docs-wiki', 'features', 'index.md');
-  const referenceIndexPath = path.join(tempDir, 'docs-wiki', 'reference', 'index.md');
-  const designIndexPath = path.join(tempDir, 'docs-wiki', 'design', 'index.md');
-  const basicDesignPath = path.join(tempDir, 'docs-wiki', 'design', 'basic-design.md');
-  const detailDesignPath = path.join(tempDir, 'docs-wiki', 'design', 'detail-design.md');
-  const flowCatalogPath = path.join(tempDir, 'docs-wiki', 'design', 'flows.md');
-  const vitePressConfigPath = path.join(tempDir, 'docs-wiki', '.vitepress', 'config.mjs');
-  const vitePressThemePath = path.join(tempDir, 'docs-wiki', '.vitepress', 'theme', 'index.mjs');
-  const schemaPath = path.join(tempDir, 'docs-wiki', 'vitepress.schema.json');
-  const searchIndexPath = path.join(tempDir, 'docs-wiki', 'search-index.json');
-  const themeCssPath = path.join(tempDir, 'docs-wiki', 'public', 'docs-wiki.css');
-  const mermaidScriptPath = path.join(tempDir, 'docs-wiki', 'public', 'mermaid.min.js');
-  const moduleIndexPath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'index.md');
-  const workspaceIndexPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'index.md');
-  const workspaceRootPath = path.join(tempDir, 'docs-wiki', 'workspaces', 'root.md');
-  const rootModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'root.md');
-  const srcModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src.md');
-  const nestedModulePath = path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'utils.md');
-  const legacyModulePath = path.join(tempDir, 'docs-wiki', 'modules', 'src.md');
-  const filePagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md');
-  const nestedFilePagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'utils', 'format.ts.md');
-  const legacyFilePagePath = path.join(tempDir, 'docs-wiki', 'files', 'src', 'index.ts.md');
+  const summaryPath = path.join(tempDir, WIKI_DIR, 'SUMMARY.md');
+  const indexPath = path.join(tempDir, WIKI_DIR, 'index.md');
+  const featureIndexPath = path.join(tempDir, WIKI_DIR, 'features', 'index.md');
+  const referenceIndexPath = path.join(tempDir, WIKI_DIR, 'reference', 'index.md');
+  const designIndexPath = path.join(tempDir, WIKI_DIR, 'design', 'index.md');
+  const basicDesignPath = path.join(tempDir, WIKI_DIR, 'design', 'basic-design.md');
+  const detailDesignPath = path.join(tempDir, WIKI_DIR, 'design', 'detail-design.md');
+  const flowCatalogPath = path.join(tempDir, WIKI_DIR, 'design', 'flows.md');
+  const vitePressConfigPath = path.join(tempDir, WIKI_DIR, '.vitepress', 'config.mjs');
+  const vitePressThemePath = path.join(tempDir, WIKI_DIR, '.vitepress', 'theme', 'index.mjs');
+  const schemaPath = path.join(tempDir, WIKI_DIR, 'vitepress.schema.json');
+  const searchIndexPath = path.join(tempDir, WIKI_DIR, 'search-index.json');
+  const themeCssPath = path.join(tempDir, WIKI_DIR, 'public', 'docs-wiki.css');
+  const mermaidScriptPath = path.join(tempDir, WIKI_DIR, 'public', 'mermaid.min.js');
+  const moduleIndexPath = path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'index.md');
+  const workspaceIndexPath = path.join(tempDir, WIKI_DIR, 'workspaces', 'index.md');
+  const workspaceRootPath = path.join(tempDir, WIKI_DIR, 'workspaces', 'root.md');
+  const rootModulePath = path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'root.md');
+  const srcModulePath = path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src.md');
+  const nestedModulePath = path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'utils.md');
+  const legacyModulePath = path.join(tempDir, WIKI_DIR, 'modules', 'src.md');
+  const filePagePath = path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'index.ts.md');
+  const nestedFilePagePath = path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'utils', 'format.ts.md');
+  const legacyFilePagePath = path.join(tempDir, WIKI_DIR, 'files', 'src', 'index.ts.md');
 
   const [summaryMarkdown, indexMarkdown, featureIndexMarkdown, referenceIndexMarkdown, designIndexMarkdown, basicDesignMarkdown, detailDesignMarkdown, flowCatalogMarkdown, vitePressConfigText, vitePressThemeText, schemaText, searchIndexText, themeCssText, mermaidScriptText, moduleIndexMarkdown, workspaceIndexMarkdown, workspaceRootMarkdown, rootModuleMarkdown, srcModuleMarkdown, nestedModuleMarkdown, legacyModuleMarkdown, fileMarkdown, nestedFileMarkdown, legacyFileMarkdown] = await Promise.all([
     fs.readFile(summaryPath, 'utf8'),
@@ -419,9 +426,9 @@ test('docs-wiki infers auth business flow and Mermaid diagrams from a focused mo
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
   const { manifest, feature, featureMarkdown } = await readFeaturePage(tempDir, (entry) => entry.domain === 'auth');
-  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
-  const legacyModuleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'modules', 'src', 'auth.md'), 'utf8');
-  const flowCatalog = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'flows.md'), 'utf8');
+  const moduleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  const legacyModuleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'modules', 'src', 'auth.md'), 'utf8');
+  const flowCatalog = await fs.readFile(path.join(tempDir, WIKI_DIR, 'design', 'flows.md'), 'utf8');
 
   assert.match(featureMarkdown, new RegExp(`# ${feature.title}`));
   assert.match(featureMarkdown, /## Actors & User Stories/);
@@ -464,17 +471,17 @@ test('docs-wiki lets users choose flow, sequence, both, or no diagrams', async (
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  let moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  let moduleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.match(moduleMarkdown, /#### Flow Diagram/);
   assert.match(moduleMarkdown, /#### Sequence Diagram/);
 
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'sequence'], { cwd: tempDir });
-  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  moduleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.doesNotMatch(moduleMarkdown, /#### Flow Diagram/);
   assert.match(moduleMarkdown, /#### Sequence Diagram/);
 
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'none'], { cwd: tempDir });
-  moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  moduleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'auth.md'), 'utf8');
   assert.doesNotMatch(moduleMarkdown, /#### Flow Diagram/);
   assert.doesNotMatch(moduleMarkdown, /#### Sequence Diagram/);
 });
@@ -486,10 +493,10 @@ test('docs-wiki extracts API contracts into design, module, workspace, and file 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
   const { featureMarkdown } = await readFeaturePage(tempDir, (entry) => entry.domain === 'auth');
-  const apiContractsMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'api-contracts.md'), 'utf8');
-  const moduleMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'modules', 'src', 'auth.md'), 'utf8');
-  const workspaceMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'workspaces', 'root.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'auth', 'login-route.ts.md'), 'utf8');
+  const apiContractsMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'design', 'api-contracts.md'), 'utf8');
+  const moduleMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'modules', 'src', 'auth.md'), 'utf8');
+  const workspaceMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'workspaces', 'root.md'), 'utf8');
+  const fileMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'auth', 'login-route.ts.md'), 'utf8');
   const manifest = await readManifest(tempDir);
 
   assert.match(apiContractsMarkdown, /# API Contracts/);
@@ -519,8 +526,8 @@ test('docs-wiki infers zod and DTO schemas plus endpoint-level sequence flow', a
 
   await execFileAsync(process.execPath, [binPath, '--flow-diagram', 'both'], { cwd: tempDir });
 
-  const apiContractsMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'design', 'api-contracts.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'app', 'api', 'auth', 'login', 'route.ts.md'), 'utf8');
+  const apiContractsMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'design', 'api-contracts.md'), 'utf8');
+  const fileMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'files', 'app', 'api', 'auth', 'login', 'route.ts.md'), 'utf8');
   const manifest = await readManifest(tempDir);
 
   assert.match(apiContractsMarkdown, /POST \/api\/auth\/login/);
@@ -542,7 +549,7 @@ test('docs-wiki infers zod and DTO schemas plus endpoint-level sequence flow', a
 test('feature clustering groups auth files into one cross-file business feature', async () => {
   const tempDir = await createAuthFixture();
   const { scanResult } = await scanProject(tempDir, {
-    outDir: 'docs-wiki',
+    outDir: WIKI_DIR,
     maxFiles: Infinity,
     include: [],
     ignore: [],
@@ -612,7 +619,7 @@ test('docs-wiki check exits clean when docs are fresh and fails after drift', as
 test('AI module summaries refine module business capability and flow naming', async () => {
   const tempDir = await createAuthFixture();
   const { scanResult } = await scanProject(tempDir, {
-    outDir: 'docs-wiki',
+    outDir: WIKI_DIR,
     maxFiles: Infinity,
     include: [],
     ignore: [],
@@ -799,14 +806,14 @@ test('VitePress CLI args are forwarded only for supported commands', () => {
 });
 
 test('deploy scaffold renderers generate GitHub Pages and Vercel configs', () => {
-  const workflow = renderGitHubPagesWorkflow({ outDir: 'docs-wiki', branch: 'main' });
-  const vercelConfig = JSON.parse(renderVercelConfig({ outDir: 'docs-wiki' }));
+  const workflow = renderGitHubPagesWorkflow({ outDir: WIKI_DIR, branch: 'main' });
+  const vercelConfig = JSON.parse(renderVercelConfig({ outDir: WIKI_DIR }));
 
   assert.match(workflow, /actions\/deploy-pages@v4/);
-  assert.match(workflow, /npx --yes docs-wiki build-site --base/);
-  assert.match(workflow, /path: docs-wiki\/\.vitepress\/dist/);
-  assert.equal(vercelConfig.buildCommand, 'npx --yes docs-wiki build-site');
-  assert.equal(vercelConfig.outputDirectory, 'docs-wiki/.vitepress/dist');
+  assert.match(workflow, /npx --yes github:truongnat\/docs-wiki build-site --base/);
+  assert.match(workflow, /path: \.docs-wiki\/\.vitepress\/dist/);
+  assert.equal(vercelConfig.buildCommand, 'npx --yes github:truongnat/docs-wiki build-site');
+  assert.equal(vercelConfig.outputDirectory, '.docs-wiki/.vitepress/dist');
 });
 
 test('docs-wiki respects docs-wiki.config.json for ignore patterns and output style', async () => {
@@ -827,9 +834,9 @@ test('docs-wiki respects docs-wiki.config.json for ignore patterns and output st
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  const indexMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'index.md'), 'utf8');
-  const fileMarkdown = await fs.readFile(path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md'), 'utf8');
-  const themeCssText = await fs.readFile(path.join(tempDir, 'docs-wiki', 'public', 'docs-wiki.css'), 'utf8');
+  const indexMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'index.md'), 'utf8');
+  const fileMarkdown = await fs.readFile(path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'index.ts.md'), 'utf8');
+  const themeCssText = await fs.readFile(path.join(tempDir, WIKI_DIR, 'public', 'docs-wiki.css'), 'utf8');
 
   assert.match(indexMarkdown, /Config:/);
   assert.match(indexMarkdown, /themePreset: "warm"/);
@@ -850,7 +857,7 @@ test('docs-wiki indexes .dart files as Dart (Flutter) plain-text pages', async (
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, WIKI_DIR, 'manifest.json'), 'utf8'));
   const dart = manifest.files.find((f) => f.relativePath === 'lib/main.dart');
   assert.ok(dart, 'expected lib/main.dart in manifest');
   assert.equal(dart.language, 'Dart (Flutter)');
@@ -899,7 +906,7 @@ test('docs-wiki ignores hidden directories and agent folders by default', async 
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
 
-  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, 'docs-wiki', 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(path.join(tempDir, WIKI_DIR, 'manifest.json'), 'utf8'));
   assert.ok(manifest.files.some((f) => f.relativePath === 'src/index.ts'));
   assert.ok(!manifest.files.some((f) => f.relativePath === '.config/routes.ts'));
   assert.ok(!manifest.files.some((f) => f.relativePath === '.github/workflow.ts'));
@@ -910,9 +917,9 @@ test('docs-wiki ignores hidden directories and agent folders by default', async 
 test('docs-wiki incremental mode rewrites only changed file pages when content changes', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
-  const unchangedPagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'index.ts.md');
-  const changedPagePath = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'src', 'utils', 'format.ts.md');
-  const manifestPath = path.join(tempDir, 'docs-wiki', 'manifest.json');
+  const unchangedPagePath = path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'index.ts.md');
+  const changedPagePath = path.join(tempDir, WIKI_DIR, 'reference', 'files', 'src', 'utils', 'format.ts.md');
+  const manifestPath = path.join(tempDir, WIKI_DIR, 'manifest.json');
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
   const beforeUnchanged = await fs.stat(unchangedPagePath);
@@ -942,19 +949,21 @@ test('docs-wiki incremental mode rewrites only changed file pages when content c
   assert.ok(manifest.incremental.reusedFiles.includes('src/index.ts'));
 });
 
-test('docs-wiki hotfix-site patches theme and mermaid without rescanning', async () => {
+test('docs-wiki hotfix-site patches theme, mermaid, and docs-wiki.css without rescanning', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
-  const sitePath = path.join(tempDir, 'docs-wiki');
+  const sitePath = path.join(tempDir, WIKI_DIR);
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
   await execFileAsync(process.execPath, [binPath, 'hotfix-site', '--site', sitePath], { cwd: tempDir });
 
   const theme = await fs.readFile(path.join(sitePath, '.vitepress', 'theme', 'index.mjs'), 'utf8');
   const mermaid = await fs.readFile(path.join(sitePath, 'public', 'mermaid.min.js'), 'utf8');
+  const styles = await fs.readFile(path.join(sitePath, 'public', 'docs-wiki.css'), 'utf8');
   assert.match(theme, /renderMermaidDiagrams/);
   assert.match(theme, /language-mermaid/);
   assert.match(mermaid, /mermaid/);
+  assert.match(styles, /\.docs-wiki-mermaid__toolbar/);
 });
 
 test('docs-wiki encodes bracketed file routes so VitePress does not treat them as dynamic pages', async () => {
@@ -979,9 +988,9 @@ test('docs-wiki encodes bracketed file routes so VitePress does not treat them a
 
   await execFileAsync(process.execPath, [binPath, '--root', tempDir, 'build-site']);
 
-  const referenceDir = path.join(tempDir, 'docs-wiki', 'reference', 'files', 'mobile', 'app', 'memory');
-  const legacyDir = path.join(tempDir, 'docs-wiki', 'files', 'mobile', 'app', 'memory');
-  const distDir = path.join(tempDir, 'docs-wiki', '.vitepress', 'dist', 'reference', 'files', 'mobile', 'app', 'memory');
+  const referenceDir = path.join(tempDir, WIKI_DIR, 'reference', 'files', 'mobile', 'app', 'memory');
+  const legacyDir = path.join(tempDir, WIKI_DIR, 'files', 'mobile', 'app', 'memory');
+  const distDir = path.join(tempDir, WIKI_DIR, '.vitepress', 'dist', 'reference', 'files', 'mobile', 'app', 'memory');
 
   const referenceFiles = await fs.readdir(referenceDir);
   const legacyFiles = await fs.readdir(legacyDir);

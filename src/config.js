@@ -38,6 +38,8 @@ const DEFAULT_FEATURE_OPTIONS = {
 };
 const DEFAULT_OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1';
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
+/** Default wiki output folder (hidden directory at project root). */
+const DEFAULT_OUT_DIR = '.docs-wiki';
 
 function toArray(value) {
   if (!value) {
@@ -131,6 +133,23 @@ function normalizeFlowDiagramMode(value) {
   return value;
 }
 
+/** @returns {'en'|'vi'} */
+function normalizeAiLocale(value) {
+  if (value === undefined || value === null || value === '') {
+    return 'en';
+  }
+
+  const v = String(value).toLowerCase().trim();
+  if (v === 'vi' || v === 'vn' || v === 'vietnamese') {
+    return 'vi';
+  }
+  if (v === 'en' || v === 'en-us' || v === 'english') {
+    return 'en';
+  }
+
+  throw new Error(`Invalid AI locale: ${value}. Use "en" or "vi" (config ai.locale, env DOCS_WIKI_LOCALE, or --locale).`);
+}
+
 async function loadUserConfig(rootDir, explicitConfigPath) {
   const configPath = explicitConfigPath ? path.resolve(explicitConfigPath) : path.join(rootDir, 'docs-wiki.config.json');
 
@@ -184,7 +203,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
 
   const resolved = {
     root: rootDir,
-    outDir: cliOptions.outDir ?? fileConfig.outDir ?? 'docs-wiki',
+    outDir: cliOptions.outDir ?? fileConfig.outDir ?? DEFAULT_OUT_DIR,
     include: toArray(fileConfig.include),
     ignore: toArray(fileConfig.ignore),
     maxFiles: cliOptions.maxFiles ?? normalizeMaxFiles(fileConfig.maxFiles),
@@ -216,6 +235,12 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       modulePrompt: typeof aiConfig.modulePrompt === 'string' ? aiConfig.modulePrompt.trim() : '',
       featurePrompt: typeof aiConfig.featurePrompt === 'string' ? aiConfig.featurePrompt.trim() : '',
       projectPrompt: typeof aiConfig.projectPrompt === 'string' ? aiConfig.projectPrompt.trim() : '',
+      locale: normalizeAiLocale(
+        cliOptions.locale
+          ?? aiConfig.locale
+          ?? process.env.DOCS_WIKI_LOCALE
+          ?? process.env.DOCS_WIKI_AI_LOCALE,
+      ),
     },
     config: {
       path: loadedConfig.path,
@@ -241,6 +266,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       featurePrompt: resolved.ai.featurePrompt,
       filePrompt: resolved.ai.filePrompt,
       projectPrompt: resolved.ai.projectPrompt,
+      locale: resolved.ai.locale,
     }),
   };
   resolved.cache.renderKey = hashObject({
@@ -267,6 +293,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       reasoningEffort: resolved.ai.reasoningEffort,
       modulePrompt: resolved.ai.modulePrompt,
       featurePrompt: resolved.ai.featurePrompt,
+      locale: resolved.ai.locale,
     },
   };
 
@@ -284,6 +311,8 @@ module.exports = {
   THEME_PRESETS,
   FLOW_DIAGRAM_MODES,
   DEFAULT_FLOW_DIAGRAM_MODE,
+  DEFAULT_OUT_DIR,
   loadUserConfig,
   resolveOptions,
+  normalizeAiLocale,
 };

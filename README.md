@@ -9,7 +9,21 @@ The goal is not only code reference. The generated output tries to answer four q
 - What request and business flows exist in the code?
 - What HTTP API contracts can be inferred from route handlers?
 
-`docs-wiki` runs against the project in the current working directory by default and writes output into `./docs-wiki` inside that same project.
+`docs-wiki` runs against the project in the current working directory by default and writes output into `./.docs-wiki` inside that same project. On generate, the tool appends `.docs-wiki/` to `.gitignore` when that entry is not already present (skipped for absolute or `..` output paths).
+
+### Running with `npx` (GitHub)
+
+Install/run is **via npx + GitHub**. Put the specifier **`github:truongnat/docs-wiki`** right after `npx`, then the subcommand and flags:
+
+```text
+npx github:truongnat/docs-wiki
+npx github:truongnat/docs-wiki serve
+npx github:truongnat/docs-wiki hotfix-site
+```
+
+Shorter form **only** if the same package is published on npm as `docs-wiki`: `npx docs-wiki …`.
+
+A compact command list lives in [docs/CLI.md](docs/CLI.md). The rest of this README uses the **GitHub** form.
 
 ## What It Generates
 
@@ -32,31 +46,31 @@ The generated site is VitePress-first and includes:
 Run against the current project:
 
 ```bash
-npx docs-wiki
+npx github:truongnat/docs-wiki
 ```
 
 Generate docs with AI enrichment:
 
 ```bash
-npx docs-wiki --ai
+npx github:truongnat/docs-wiki --ai
 ```
 
 Serve the generated wiki locally with VitePress:
 
 ```bash
-npx docs-wiki serve
+npx github:truongnat/docs-wiki serve
 ```
 
 Build a production site:
 
 ```bash
-npx docs-wiki build-site
+npx github:truongnat/docs-wiki build-site
 ```
 
 Preview the production build:
 
 ```bash
-npx docs-wiki preview
+npx github:truongnat/docs-wiki preview
 ```
 
 ### Hotfix the generated site (no re-scan)
@@ -64,19 +78,19 @@ npx docs-wiki preview
 After a long `docs-wiki` run, you can patch **only** the VitePress client bundle (theme entry + `public/mermaid.min.js`) to match your installed `docs-wiki` version—**without** re-analyzing the repo:
 
 ```bash
-# Default: `<cwd>/docs-wiki` (respects `docs-wiki.config.json` `outDir` when resolved from `--root`)
-npx docs-wiki hotfix-site
+# Default: `<cwd>/.docs-wiki` (respects `docs-wiki.config.json` `outDir` when resolved from `--root`)
+npx github:truongnat/docs-wiki hotfix-site
 
 # Explicit path to the generated folder (contains `.vitepress/` and `public/`)
-npx docs-wiki hotfix-site --site /path/to/project/docs-wiki
+npx github:truongnat/docs-wiki hotfix-site --site /path/to/project/.docs-wiki
 ```
 
-Then restart `docs-wiki serve` or run `docs-wiki build-site`. This is intended for fixes such as Mermaid rendering updates; it does **not** regenerate Markdown.
+Then restart the dev server (`npx github:truongnat/docs-wiki serve`) or run `npx github:truongnat/docs-wiki build-site`. This is intended for fixes such as Mermaid rendering updates; it does **not** regenerate Markdown.
 
 Run against another directory:
 
 ```bash
-npx docs-wiki ../my-project --out-dir wiki
+npx github:truongnat/docs-wiki ../my-project --out-dir wiki
 ```
 
 ## Requirements
@@ -93,42 +107,42 @@ If AI is enabled, use one of these:
 Generate docs:
 
 ```bash
-npx docs-wiki
-npx docs-wiki ./path/to/project
-npx docs-wiki --root ./path/to/project --out-dir docs-wiki
+npx github:truongnat/docs-wiki
+npx github:truongnat/docs-wiki ./path/to/project
+npx github:truongnat/docs-wiki --root ./path/to/project --out-dir .docs-wiki
 ```
 
 Serve the generated VitePress site:
 
 ```bash
-npx docs-wiki serve
-npx docs-wiki serve --port 4173 --open
+npx github:truongnat/docs-wiki serve
+npx github:truongnat/docs-wiki serve --port 4173 --open
 ```
 
 Build and preview:
 
 ```bash
-npx docs-wiki build-site --base /internal-docs/
-npx docs-wiki preview --port 4174
+npx github:truongnat/docs-wiki build-site --base /internal-docs/
+npx github:truongnat/docs-wiki preview --port 4174
 ```
 
 Check whether the generated docs are stale:
 
 ```bash
-npx docs-wiki check
+npx github:truongnat/docs-wiki check
 ```
 
 Deploy scaffold:
 
 ```bash
-npx docs-wiki init-deploy --target github-pages
-npx docs-wiki init-deploy --target vercel
+npx github:truongnat/docs-wiki init-deploy --target github-pages
+npx github:truongnat/docs-wiki init-deploy --target vercel
 ```
 
 Watch mode:
 
 ```bash
-npx docs-wiki --watch
+npx github:truongnat/docs-wiki --watch
 ```
 
 ## CLI Options
@@ -304,29 +318,29 @@ Environment variables:
 
 By default the CLI writes:
 
-- `docs-wiki/SUMMARY.md`
-- `docs-wiki/index.md`
-- `docs-wiki/features/index.md`
-- `docs-wiki/features/*.md`
-- `docs-wiki/design/index.md`
-- `docs-wiki/design/basic-design.md`
-- `docs-wiki/design/detail-design.md`
-- `docs-wiki/design/api-contracts.md`
-- `docs-wiki/design/flows.md`
-- `docs-wiki/reference/index.md`
-- `docs-wiki/reference/modules/index.md`
-- `docs-wiki/reference/modules/**/*.md`
-- `docs-wiki/workspaces/index.md`
-- `docs-wiki/workspaces/**/*.md`
-- `docs-wiki/reference/files/**/*.md`
-- `docs-wiki/modules/**/*.md` as redirect stubs for old URLs
-- `docs-wiki/files/**/*.md` as redirect stubs for old URLs
-- `docs-wiki/.vitepress/config.mjs`
-- `docs-wiki/.vitepress/theme/index.mjs`
-- `docs-wiki/public/docs-wiki.css`
-- `docs-wiki/search-index.json`
-- `docs-wiki/vitepress.schema.json`
-- `docs-wiki/manifest.json`
+- `.docs-wiki/SUMMARY.md`
+- `.docs-wiki/index.md`
+- `.docs-wiki/features/index.md`
+- `.docs-wiki/features/*.md`
+- `.docs-wiki/design/index.md`
+- `.docs-wiki/design/basic-design.md`
+- `.docs-wiki/design/detail-design.md`
+- `.docs-wiki/design/api-contracts.md`
+- `.docs-wiki/design/flows.md`
+- `.docs-wiki/reference/index.md`
+- `.docs-wiki/reference/modules/index.md`
+- `.docs-wiki/reference/modules/**/*.md`
+- `.docs-wiki/workspaces/index.md`
+- `.docs-wiki/workspaces/**/*.md`
+- `.docs-wiki/reference/files/**/*.md`
+- `.docs-wiki/modules/**/*.md` as redirect stubs for old URLs
+- `.docs-wiki/files/**/*.md` as redirect stubs for old URLs
+- `.docs-wiki/.vitepress/config.mjs`
+- `.docs-wiki/.vitepress/theme/index.mjs`
+- `.docs-wiki/public/docs-wiki.css`
+- `.docs-wiki/search-index.json`
+- `.docs-wiki/vitepress.schema.json`
+- `.docs-wiki/manifest.json`
 
 ## What The Tool Infers
 
@@ -425,7 +439,7 @@ These are still documented as files, but without full AST-based symbol extractio
 - config/data: `.json`, `.yaml`, `.yml`
 - mobile/JVM text-indexed files: `.swift`, `.kt`, `.kts`, `.java`
 
-Common generated directories are ignored automatically, including build caches, `node_modules`, `.next`, `.dart_tool`, iOS Pods, Android Gradle outputs, and the generated `docs-wiki/` folder itself.
+Common generated directories are ignored automatically, including build caches, `node_modules`, `.next`, `.dart_tool`, iOS Pods, Android Gradle outputs, and the generated `.docs-wiki/` folder itself.
 
 Hidden directories are ignored by default as well, for example `.github`, `.config`, `.cursor`, `.agents`, plus unhidden `agent/` and `agents/` helper folders.
 
@@ -435,9 +449,9 @@ Generated docs are VitePress-ready out of the box.
 
 Included pieces:
 
-- `docs-wiki/.vitepress/config.mjs`
-- `docs-wiki/.vitepress/theme/index.mjs`
-- `docs-wiki/public/docs-wiki.css`
+- `.docs-wiki/.vitepress/config.mjs`
+- `.docs-wiki/.vitepress/theme/index.mjs`
+- `.docs-wiki/public/docs-wiki.css`
 - VitePress frontmatter on every page
 - Mermaid rendering support
 - local search config
@@ -446,9 +460,9 @@ Included pieces:
 Useful commands:
 
 ```bash
-npx docs-wiki serve --port 4173 --open
-npx docs-wiki build-site --base /internal-docs/
-npx docs-wiki preview --port 4174
+npx github:truongnat/docs-wiki serve --port 4173 --open
+npx github:truongnat/docs-wiki build-site --base /internal-docs/
+npx github:truongnat/docs-wiki preview --port 4174
 ```
 
 ## Incremental Mode
@@ -466,7 +480,7 @@ On repeated runs, `docs-wiki` attempts to:
 Disable it if you want a full clean pass:
 
 ```bash
-npx docs-wiki --no-incremental
+npx github:truongnat/docs-wiki --no-incremental
 ```
 
 ## Drift Check
@@ -474,10 +488,10 @@ npx docs-wiki --no-incremental
 Use `check` in CI or before commits when you want to know whether the committed wiki output is stale.
 
 ```bash
-npx docs-wiki check
+npx github:truongnat/docs-wiki check
 ```
 
-The command compares the current codebase against the previously generated `docs-wiki/manifest.json` and fails when:
+The command compares the current codebase against the previously generated `.docs-wiki/manifest.json` and fails when:
 
 - source files changed or were deleted
 - feature clusters changed
@@ -492,7 +506,7 @@ This gives you a simple CI gate for “docs must be regenerated”.
 Use watch mode during development inside a target project:
 
 ```bash
-npx docs-wiki --watch
+npx github:truongnat/docs-wiki --watch
 ```
 
 This reruns the generation pipeline on changes and ignores the output directory itself.
@@ -502,13 +516,13 @@ This reruns the generation pipeline on changes and ignores the output directory 
 Generate GitHub Pages workflow:
 
 ```bash
-npx docs-wiki init-deploy --target github-pages
+npx github:truongnat/docs-wiki init-deploy --target github-pages
 ```
 
 Generate Vercel config:
 
 ```bash
-npx docs-wiki init-deploy --target vercel
+npx github:truongnat/docs-wiki init-deploy --target vercel
 ```
 
 Use `--overwrite` if the target file already exists and you intentionally want to replace it.
@@ -518,19 +532,19 @@ Use `--overwrite` if the target file already exists and you intentionally want t
 Inside a project you want to document:
 
 ```bash
-npx docs-wiki --ai --flow-diagram both
-npx docs-wiki serve
+npx github:truongnat/docs-wiki --ai --flow-diagram both
+npx github:truongnat/docs-wiki serve
 ```
 
 Then inspect these pages first:
 
-1. `docs-wiki/index.md`
-2. `docs-wiki/features/index.md`
-3. `docs-wiki/design/basic-design.md`
-4. `docs-wiki/design/detail-design.md`
-5. `docs-wiki/design/api-contracts.md`
-6. `docs-wiki/design/flows.md`
-7. `docs-wiki/reference/index.md`
+1. `.docs-wiki/index.md`
+2. `.docs-wiki/features/index.md`
+3. `.docs-wiki/design/basic-design.md`
+4. `.docs-wiki/design/detail-design.md`
+5. `.docs-wiki/design/api-contracts.md`
+6. `.docs-wiki/design/flows.md`
+7. `.docs-wiki/reference/index.md`
 
 ## Repository Layout
 

@@ -13,24 +13,26 @@ const { printBanner, createRunProgress } = require('./ui');
 function printHelp() {
   console.log(`docs-wiki
 
-Usage:
-  npx docs-wiki
-  npx docs-wiki ./path/to/project
-  npx docs-wiki serve
-  npx docs-wiki build-site
-  npx docs-wiki preview
-  npx docs-wiki check
-  npx docs-wiki hotfix-site
-  npx docs-wiki init-deploy --target github-pages
-  npx docs-wiki init-deploy --target vercel
-  npx docs-wiki --root ./path/to/project --out-dir docs-wiki
-  npx docs-wiki --ai
-  npx docs-wiki --watch
+Usage (from GitHub — put github:truongnat/docs-wiki immediately after npx):
+  npx github:truongnat/docs-wiki
+  npx github:truongnat/docs-wiki ./path/to/project
+  npx github:truongnat/docs-wiki serve
+  npx github:truongnat/docs-wiki build-site
+  npx github:truongnat/docs-wiki preview
+  npx github:truongnat/docs-wiki check
+  npx github:truongnat/docs-wiki hotfix-site
+  npx github:truongnat/docs-wiki init-deploy --target github-pages
+  npx github:truongnat/docs-wiki init-deploy --target vercel
+  npx github:truongnat/docs-wiki --root ./path/to/project --out-dir .docs-wiki
+  npx github:truongnat/docs-wiki --ai
+  npx github:truongnat/docs-wiki --watch
+
+If the package is installed from npm as "docs-wiki", use: npx docs-wiki …
 
 Options:
   --root <path>         Root directory to scan. Defaults to the current working directory.
   --config <path>       Path to docs-wiki.config.json. Defaults to <root>/docs-wiki.config.json.
-  --out-dir <path>      Output directory inside the scanned project. Defaults to docs-wiki.
+  --out-dir <path>      Output directory inside the scanned project. Defaults to .docs-wiki.
   --site <path>         With hotfix-site: path to generated site folder (contains .vitepress). Overrides --root/--out-dir.
   --port <n>            Port used by VitePress serve/preview.
   --open [path]         Open the browser when starting VitePress dev.
@@ -56,6 +58,7 @@ Options:
   --ollama-model-strategy <name>
                        Ollama selection strategy: exact, family, first-available.
   --openai-api-key <k>  API key override. Defaults to OPENAI_API_KEY.
+  --locale <en|vi>      Language for AI-generated prose (default: en). Overrides ai.locale and DOCS_WIKI_LOCALE.
   --watch               Watch the repo and rebuild on changes.
   --no-watch            Disable watch mode.
   --incremental         Reuse the previous manifest and only rewrite changed pages when possible.
@@ -83,6 +86,7 @@ function parseArgs(argv) {
     aiModel: undefined,
     ollamaModelStrategy: undefined,
     openAIApiKey: undefined,
+    locale: undefined,
     incremental: undefined,
     watch: undefined,
     port: undefined,
@@ -275,6 +279,12 @@ function parseArgs(argv) {
 
     if (current === '--openai-api-key') {
       options.openAIApiKey = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+
+    if (current === '--locale') {
+      options.locale = argv[index + 1] || undefined;
       index += 1;
       continue;
     }
@@ -505,6 +515,7 @@ async function build(cliOptions, buildMeta = {}) {
     filePrompt: options.ai.filePrompt,
     modulePrompt: options.ai.modulePrompt,
     projectPrompt: options.ai.projectPrompt,
+    locale: options.ai.locale,
     previousManifest,
     onProgress: ai,
   });
@@ -523,6 +534,7 @@ async function build(cliOptions, buildMeta = {}) {
     ollamaApiKey: options.ai.ollamaApiKey,
     reasoningEffort: options.ai.reasoningEffort,
     featurePrompt: options.ai.featurePrompt,
+    locale: options.ai.locale,
     previousManifest,
   });
 
@@ -581,11 +593,12 @@ async function runHotfixSite(cliOptions) {
     : path.resolve(options.root, options.outDir);
 
   const { applySiteHotfix } = require('./siteHotfix');
-  const result = await applySiteHotfix(siteRoot);
+  const result = await applySiteHotfix(siteRoot, { output: options.output });
 
   console.log('docs-wiki hotfix-site: patched VitePress client files (no codebase re-scan).');
   console.log(`  theme:   ${result.themePath}`);
   console.log(`  mermaid: ${result.mermaidPath}`);
+  console.log(`  styles:  ${result.stylesPath}`);
   console.log('Restart `docs-wiki serve` or run `docs-wiki build-site` to pick up changes.');
 }
 

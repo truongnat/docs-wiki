@@ -11,6 +11,14 @@ const DEFAULT_FEATURE_SYSTEM_PROMPT = 'You generate feature-oriented design docu
 const DEFAULT_PROJECT_SYSTEM_PROMPT = 'You generate top-level project overviews for internal engineering wikis. Keep it concrete and architecture-focused.';
 const DEFAULT_OLLAMA_TIMEOUT_MS = 1200;
 
+function appendLocaleToSystemPrompt(base, locale) {
+  if (locale === 'vi') {
+    return `${base}\n\nLanguage: Write all descriptive text in Vietnamese (Tiếng Việt). Keep JSON property names exactly as specified; string values in the JSON should be in Vietnamese.`;
+  }
+
+  return `${base}\n\nLanguage: Write all descriptive text in English.`;
+}
+
 const FileSummarySchema = z.object({
   summary: z.string(),
   responsibilities: z.array(z.string()).max(5),
@@ -740,9 +748,12 @@ function coerceFeatureSummary(raw, feature) {
 }
 
 async function summarizeFile(client, file, options, providerInfo) {
-  const systemPrompt = options.filePrompt
-    ? `${DEFAULT_FILE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.filePrompt}`
-    : DEFAULT_FILE_SYSTEM_PROMPT;
+  const systemPrompt = appendLocaleToSystemPrompt(
+    options.filePrompt
+      ? `${DEFAULT_FILE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.filePrompt}`
+      : DEFAULT_FILE_SYSTEM_PROMPT,
+    options.locale,
+  );
 
   if (providerInfo.provider === 'ollama') {
     const response = await client.chat.completions.create({
@@ -785,9 +796,12 @@ async function summarizeFile(client, file, options, providerInfo) {
 }
 
 async function summarizeModule(client, module, files, options, providerInfo) {
-  const systemPrompt = options.modulePrompt
-    ? `${DEFAULT_MODULE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.modulePrompt}`
-    : DEFAULT_MODULE_SYSTEM_PROMPT;
+  const systemPrompt = appendLocaleToSystemPrompt(
+    options.modulePrompt
+      ? `${DEFAULT_MODULE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.modulePrompt}`
+      : DEFAULT_MODULE_SYSTEM_PROMPT,
+    options.locale,
+  );
 
   if (providerInfo.provider === 'ollama') {
     const response = await client.chat.completions.create({
@@ -837,9 +851,12 @@ async function summarizeModule(client, module, files, options, providerInfo) {
 }
 
 async function summarizeFeature(client, feature, scanResult, options, providerInfo) {
-  const systemPrompt = options.featurePrompt
-    ? `${DEFAULT_FEATURE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.featurePrompt}`
-    : DEFAULT_FEATURE_SYSTEM_PROMPT;
+  const systemPrompt = appendLocaleToSystemPrompt(
+    options.featurePrompt
+      ? `${DEFAULT_FEATURE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.featurePrompt}`
+      : DEFAULT_FEATURE_SYSTEM_PROMPT,
+    options.locale,
+  );
 
   if (providerInfo.provider === 'ollama') {
     const response = await client.chat.completions.create({
@@ -899,9 +916,12 @@ async function summarizeFeature(client, feature, scanResult, options, providerIn
 }
 
 async function summarizeProject(client, scanResult, options, providerInfo) {
-  const systemPrompt = options.projectPrompt
-    ? `${DEFAULT_PROJECT_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.projectPrompt}`
-    : DEFAULT_PROJECT_SYSTEM_PROMPT;
+  const systemPrompt = appendLocaleToSystemPrompt(
+    options.projectPrompt
+      ? `${DEFAULT_PROJECT_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.projectPrompt}`
+      : DEFAULT_PROJECT_SYSTEM_PROMPT,
+    options.locale,
+  );
 
   if (providerInfo.provider === 'ollama') {
     const response = await client.chat.completions.create({
@@ -976,6 +996,7 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     featurePrompt: rawOptions.featurePrompt || '',
     projectPrompt: rawOptions.projectPrompt || '',
     previousManifest: rawOptions.previousManifest || null,
+    locale: rawOptions.locale === 'vi' ? 'vi' : 'en',
   };
 
   if (!options.enabled) {
@@ -1220,6 +1241,7 @@ async function enrichFeaturesWithAi(scanResult, rawOptions = {}) {
     reasoningEffort: rawOptions.reasoningEffort || process.env.DOCS_WIKI_REASONING_EFFORT || DEFAULT_REASONING_EFFORT,
     featurePrompt: rawOptions.featurePrompt || '',
     previousManifest: rawOptions.previousManifest || null,
+    locale: rawOptions.locale === 'vi' ? 'vi' : 'en',
   };
 
   if (!Array.isArray(scanResult.features) || scanResult.features.length === 0) {

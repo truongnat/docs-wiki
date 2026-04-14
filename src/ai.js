@@ -7,7 +7,21 @@ const DEFAULT_REASONING_EFFORT = 'none';
 const DEFAULT_OLLAMA_MODEL_STRATEGY = 'family';
 const DEFAULT_FILE_SYSTEM_PROMPT = 'You generate compact technical documentation for source files. Be precise, concise, and avoid speculation.';
 const DEFAULT_MODULE_SYSTEM_PROMPT = 'You generate business-oriented module documentation from file summaries and code structure. Focus on capability, business flow, and module boundaries.';
-const DEFAULT_FEATURE_SYSTEM_PROMPT = 'You generate feature-oriented design documentation from clustered code summaries. Focus on user journeys, cross-workspace boundaries, API contracts, and operational edge cases.';
+const DEFAULT_FEATURE_SYSTEM_PROMPT = `ROLE: Senior Technical Architect & System Mapper
+
+MISSION:
+Phân tích toàn bộ context của codebase được cung cấp để tạo ra tài liệu hướng tính năng (Feature-Centric Documentation). Bạn phải tự động nhận diện các "Feature Clusters" (nhóm file liên quan đến một chức năng) thay vì phân tích đơn lẻ từng file.
+
+ANALYSIS STRATEGY:
+1. Feature Discovery: Tìm các điểm chạm (Entry points) chung.
+2. Layer Tracing: Tự động truy vết luồng dữ liệu qua các tầng: UI -> API Gateways -> Business Logic -> Data Layer.
+3. Variable Context Identification: Đặc biệt chú ý các biến điều hướng nghiệp vụ quan trọng (ví dụ: targetYear, rlsId, organizationId). Giải thích cách các biến này ảnh hưởng đến logic của feature.
+
+OUTPUT STRUCTURE:
+- Feature Overview: Mô tả ngắn gọn "Cái gì" và "Tại sao".
+- Business Constraints: Trích xuất các quy tắc ẩn trong code.
+- Data Flow (PlantUML Sequence): Thể hiện rõ Actor (User), Frontend, Backend, và Database. Sử dụng cú pháp PlantUML chuẩn: \\n cho newline trong label, alt/else cho logic rẽ nhánh.
+- Architecture Mapping: Liệt kê các File/Symbol quan trọng tham gia vào feature này.`;
 const DEFAULT_PROJECT_SYSTEM_PROMPT = 'You generate top-level project overviews for internal engineering wikis. Keep it concrete and architecture-focused.';
 const DEFAULT_OLLAMA_TIMEOUT_MS = 1200;
 
@@ -58,6 +72,11 @@ const ModuleSummarySchema = z.object({
 
 const FeatureSummarySchema = z.object({
   overview: z.string(),
+  businessConstraints: z.array(z.string()).max(10).default([]),
+  variableContext: z.array(z.object({
+    name: z.string(),
+    impact: z.string(),
+  })).max(8).default([]),
   userStories: z.array(z.object({
     role: z.string(),
     goal: z.string(),
@@ -81,6 +100,7 @@ const FeatureSummarySchema = z.object({
   flowNarratives: z.array(z.object({
     name: z.string(),
     steps: z.array(z.string()).max(8).default([]),
+    plantUml: z.string().optional(),
   })).max(6).default([]),
   errorCases: z.array(z.object({
     case: z.string(),
@@ -223,9 +243,12 @@ function buildModulePrompt(module, files) {
 
 function buildFeaturePrompt(feature, scanResult) {
   const fileMap = new Map(scanResult.files.map((file) => [file.relativePath, file]));
+  const { createSkeletalSource } = require('./scanner');
+
   const fileBlocks = feature.files.slice(0, 32).map((fileRef) => {
     const file = fileMap.get(fileRef.path);
     const aiSummary = file && file.ai ? file.ai : {};
+    const skeletal = file ? `\nskeletal structure:\n${createSkeletalSource(file)}` : '';
     return [
       `file: ${fileRef.path}`,
       `workspace: ${fileRef.workspaceName || fileRef.workspace || '(root)'}`,
@@ -233,8 +256,10 @@ function buildFeaturePrompt(feature, scanResult) {
       `reason: ${fileRef.reason}`,
       `summary: ${aiSummary.summary || 'n/a'}`,
       `responsibilities: ${(aiSummary.responsibilities || []).join('; ') || 'n/a'}`,
+      skeletal
     ].join('\n');
   });
+
   const endpointBlocks = (feature.apiContracts || []).slice(0, 16).map((endpoint) => [
     `endpoint: ${endpoint.method} ${endpoint.path}`,
     `handler: ${endpoint.handler || 'n/a'}`,
@@ -245,34 +270,30 @@ function buildFeaturePrompt(feature, scanResult) {
     ].filter(Boolean).join(' | ') || 'n/a'}`,
     `responses: ${(endpoint.responses || []).map((response) => `${response.status}:${(response.bodyKeys || []).join(', ')}`).join(' | ') || 'n/a'}`,
   ].join('\n'));
-  const flowBlocks = (feature.flows || []).slice(0, 8).map((flow) => [
-    `flow: ${flow.name}`,
-    `goal: ${flow.goal || 'n/a'}`,
-    `steps: ${(flow.steps || []).join(' | ') || 'n/a'}`,
-  ].join('\n'));
+
+  const linked = (feature.linkedEndpoints || []).slice(0, 8).map((endpoint) => `Linked FE->BE Call: ${endpoint.method} ${endpoint.path}`);
+  const vars = (feature.globalVariables || []).slice(0, 8).map((v) => `${v.name} (appears ${v.occurrences} times)`);
 
   return [
     `Feature: ${feature.title}`,
     `Domain: ${feature.domainLabel || feature.domain}`,
     `Action: ${feature.actionLabel || 'n/a'}`,
     `Summary: ${feature.summary || 'n/a'}`,
-    `Workspaces: ${(feature.workspaces || []).map((workspace) => workspace.name || workspace.directory || '(root)').join(', ') || 'n/a'}`,
-    `Actors: ${(feature.actors || []).join(', ') || 'n/a'}`,
-    `Entry points (FE): ${(feature.entryPoints && feature.entryPoints.fe ? feature.entryPoints.fe.join(', ') : '') || 'n/a'}`,
-    `Entry points (BE): ${(feature.entryPoints && feature.entryPoints.be ? feature.entryPoints.be.join(', ') : '') || 'n/a'}`,
+    '',
+    'Global Business Variables identified:',
+    vars.length > 0 ? vars.join('\n') : 'None identified',
+    '',
+    'Linked FE->BE API Handshakes discovered:',
+    linked.length > 0 ? linked.join('\n') : 'None identified',
     '',
     'Generate feature-oriented design docs for this cluster.',
     'Use business language and explain the end-to-end journey across UI, API, services, and persistence.',
-    'Do not invent systems or responsibilities that are not grounded in the provided summaries.',
     '',
     'Files:',
     fileBlocks.length > 0 ? fileBlocks.join('\n\n') : '(no files)',
     '',
     'API contracts:',
     endpointBlocks.length > 0 ? endpointBlocks.join('\n\n') : '(no endpoints)',
-    '',
-    'Flows:',
-    flowBlocks.length > 0 ? flowBlocks.join('\n\n') : '(no flows)',
   ].join('\n');
 }
 
@@ -678,6 +699,48 @@ function normalizeFeatureComponents(value) {
     .slice(0, 10);
 }
 
+function normalizeVariableContext(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const name = normalizeString(entry.name || entry.variable);
+      const impact = normalizeString(entry.impact || entry.reason || entry.description);
+      if (!name || !impact) {
+        return null;
+      }
+      return { name, impact };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function fixPlantUml(uml) {
+  if (!uml) return uml;
+  let fixed = uml.trim();
+  if (!fixed.startsWith('@startuml')) fixed = '@startuml\n' + fixed;
+  if (!fixed.endsWith('@enduml')) fixed = fixed + '\n@enduml';
+  
+  // Rule: Tự động ngắt dòng cho label dài trên 20 ký tự
+  fixed = fixed.replace(/:(.*):/g, (match, label) => {
+    if (label.length > 20 && !label.includes('\\n')) {
+      const mid = Math.floor(label.length / 2);
+      const space = label.lastIndexOf(' ', mid);
+      if (space !== -1) {
+        return `:${label.slice(0, space)}\\n${label.slice(space + 1)}:`;
+      }
+    }
+    return match;
+  });
+  
+  return fixed;
+}
+
 function normalizeFlowNarratives(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -690,10 +753,11 @@ function normalizeFlowNarratives(value) {
       }
       const name = normalizeString(entry.name || entry.flow || entry.title);
       const steps = normalizeStringArray(entry.steps, 8);
+      const plantUml = fixPlantUml(normalizeString(entry.plantUml || entry.sequence || entry.diagram));
       if (!name) {
         return null;
       }
-      return { name, steps };
+      return { name, steps, plantUml };
     })
     .filter(Boolean)
     .slice(0, 6);
@@ -730,6 +794,8 @@ function coerceFeatureSummary(raw, feature) {
 
   return FeatureSummarySchema.parse({
     overview: !isGenericSummary(rawOverview) ? rawOverview : (feature.summary || `${feature.title} coordinates a cross-cutting business workflow.`),
+    businessConstraints: normalizeStringArray(raw && raw.businessConstraints, 10),
+    variableContext: normalizeVariableContext(raw && raw.variableContext),
     userStories: normalizeUserStories(raw && raw.userStories),
     basicDesign: {
       context: normalizeString(basicDesign.context) || feature.summary || `${feature.title} spans multiple code units that together deliver the feature.`,

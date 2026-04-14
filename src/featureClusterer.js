@@ -518,6 +518,33 @@ function buildFallbackUserStories(feature) {
   }];
 }
 
+function findGlobalBusinessVariables(files) {
+  const varCounts = new Map();
+  const BUSINESS_VARIABLE_PATTERNS = [
+    /\b(organization|tenant|school|branch|store|rls|user)Id\b/g,
+    /\b(target|current)(Year|Date|Period)\b/g,
+    /\b(fiscal|academic)Year\b/g
+  ];
+
+  for (const file of files) {
+    if (!file.symbols) continue;
+    for (const symbol of file.symbols) {
+      for (const pattern of BUSINESS_VARIABLE_PATTERNS) {
+        const matches = symbol.code.matchAll(pattern);
+        for (const match of matches) {
+          const varName = match[0];
+          varCounts.set(varName, (varCounts.get(varName) || 0) + 1);
+        }
+      }
+    }
+  }
+
+  return Array.from(varCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .filter(e => e[1] >= 2)
+    .map(e => ({ name: e[0], occurrences: e[1] }));
+}
+
 function buildFeature(scanResult, domainDefinitions, domainId, actionId, selectedPaths, metadataByPath) {
   const domainDefinition = domainDefinitions.find((entry) => entry.id === domainId) || {
     id: domainId,
@@ -544,6 +571,23 @@ function buildFeature(scanResult, domainDefinitions, domainId, actionId, selecte
     ...((endpoint.request && endpoint.request.bodySchemas) || []),
     ...(endpoint.responseSchemas || []),
   ]).map((schema) => schema && JSON.stringify(schema))).map((entry) => JSON.parse(entry));
+
+  // Cross-Layer API Client Linkage
+  const linkedEndpoints = [];
+  for (const file of selectedFiles) {
+    if (file.apiCalls) {
+      for (const call of file.apiCalls) {
+        const matchedApi = (scanResult.api && scanResult.api.endpoints || []).find(e => 
+          e.path === call.path && e.method === call.method
+        );
+        if (matchedApi) {
+          linkedEndpoints.push(matchedApi);
+        }
+      }
+    }
+  }
+
+  const globalVars = findGlobalBusinessVariables(selectedFiles);
 
   const modules = unique(selectedFiles.map((file) => file.directory));
   const moduleDesigns = (scanResult.design && Array.isArray(scanResult.design.modules) ? scanResult.design.modules : [])
@@ -641,6 +685,8 @@ function buildFeature(scanResult, domainDefinitions, domainId, actionId, selecte
     entryPoints,
     integrations,
     dataStores,
+    linkedEndpoints,
+    globalVariables: globalVars,
   };
 
   feature.userStories = buildFallbackUserStories(feature);

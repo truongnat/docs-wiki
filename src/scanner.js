@@ -401,8 +401,10 @@ function parsePythonImportBindings(source, imports, bindings) {
 function extractDependencies(extension, source) {
   const imports = [];
   const importBindings = [];
+  const apiCalls = [];
 
   if (['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx'].includes(extension)) {
+    // Standard Imports
     for (const match of source.matchAll(/\bimport\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g)) {
       imports.push(match[2]);
       parseJsImportClause(match[1], match[2], importBindings);
@@ -410,6 +412,23 @@ function extractDependencies(extension, source) {
     for (const match of source.matchAll(/\bimport\s+['"]([^'"]+)['"]/g)) {
       imports.push(match[1]);
     }
+    
+    // API Calls (FE/Client detection)
+    for (const match of source.matchAll(/\b(axios|fetch|api|client)\.(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\3/gi)) {
+      apiCalls.push({
+        method: match[2].toUpperCase(),
+        path: match[4],
+        tool: match[1]
+      });
+    }
+    for (const match of source.matchAll(/\bfetch\s*\(\s*(['"`])([^'"`]+)\1\s*,\s*\{\s*method\s*:\s*(['"`])(\w+)\3/gi)) {
+      apiCalls.push({
+        method: match[4].toUpperCase(),
+        path: match[2],
+        tool: 'fetch'
+      });
+    }
+
     for (const match of source.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g)) {
       imports.push(match[1]);
     }
@@ -474,7 +493,19 @@ function extractDependencies(extension, source) {
         left.specifier.localeCompare(right.specifier)
         || left.local.localeCompare(right.local)
       )),
+    apiCalls: apiCalls
   };
+}
+
+function createSkeletalSource(file) {
+  if (!file.symbols || file.symbols.length === 0) return "";
+  
+  return file.symbols
+    .map(s => {
+      const exportedPrefix = s.exported ? "export " : "";
+      return `${exportedPrefix}${s.kind} ${s.signature} { /* logic inferred from ${s.endLine - s.startLine} lines */ }`;
+    })
+    .join("\n");
 }
 
 function uniqueStrings(values) {

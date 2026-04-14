@@ -431,9 +431,10 @@ test('docs-wiki infers auth business flow and Mermaid diagrams from a focused mo
   const flowCatalog = await fs.readFile(path.join(tempDir, WIKI_DIR, 'design', 'flows.md'), 'utf8');
 
   assert.match(featureMarkdown, new RegExp(`# ${feature.title}`));
-  assert.match(featureMarkdown, /## Actors & User Stories/);
-  assert.match(featureMarkdown, /## Business Flows/);
-  assert.match(featureMarkdown, /## Related Files/);
+  assert.match(featureMarkdown, /## 1. Feature Overview/);
+  assert.match(featureMarkdown, /### Actors & User Stories/);
+  assert.match(featureMarkdown, /## 3. Data Flow \(PlantUML Sequence\)/);
+  assert.match(featureMarkdown, /## 4. Architecture Mapping/);
   assert.match(featureMarkdown, /login-route\.ts/);
   assert.match(featureMarkdown, /auth-service\.ts/);
   assert.match(featureMarkdown, /auth-repository\.ts/);

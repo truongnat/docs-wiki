@@ -2089,11 +2089,9 @@ function renderFeaturePage(scanResult, feature, output) {
     `- Feature catalog: [All features](${relativeLink(currentPath, FEATURES_INDEX_FILE)})`,
     `- Reference: [Reference Index](${relativeLink(currentPath, REFERENCE_INDEX_FILE)})`,
     '',
-    '## Overview',
+    '## 1. Feature Overview',
     '',
     escapeAngleBracketsForVueMarkdown(feature.ai && feature.ai.overview ? feature.ai.overview : (feature.overview || feature.summary)),
-    '',
-    '## Actors & User Stories',
     '',
   ];
 
@@ -2101,25 +2099,33 @@ function renderFeaturePage(scanResult, feature, output) {
     ? feature.ai.userStories
     : (feature.userStories || []);
 
-  if (userStories.length === 0) {
-    lines.push(...renderStringList(feature.actors || []));
-  } else {
+  if (userStories.length > 0) {
+    lines.push('### Actors & User Stories', '');
     for (const story of userStories) {
-      lines.push(`### As ${escapeAngleBracketsForVueMarkdown(story.role)}`);
-      lines.push('');
-      lines.push(`- Goal: ${escapeAngleBracketsForVueMarkdown(story.goal)}`);
-      lines.push(`- Benefit: ${escapeAngleBracketsForVueMarkdown(story.benefit)}`);
-      if (Array.isArray(story.acceptance) && story.acceptance.length > 0) {
-        lines.push('', '#### Acceptance Criteria', '');
-        for (const item of story.acceptance) {
-          lines.push(`- ${escapeAngleBracketsForVueMarkdown(item)}`);
-        }
-      }
-      lines.push('');
+      lines.push(`- **As ${escapeAngleBracketsForVueMarkdown(story.role)}**: ${escapeAngleBracketsForVueMarkdown(story.goal)} (Benefit: ${escapeAngleBracketsForVueMarkdown(story.benefit)})`);
     }
+    lines.push('');
   }
 
-  lines.push('## Business Flows', '');
+  lines.push('## 2. Business Constraints', '');
+  if (feature.ai && Array.isArray(feature.ai.businessConstraints) && feature.ai.businessConstraints.length > 0) {
+    for (const constraint of feature.ai.businessConstraints) {
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(constraint)}`);
+    }
+  } else {
+    lines.push('No specific business constraints were inferred from the code.');
+  }
+  lines.push('');
+
+  if (feature.ai && Array.isArray(feature.ai.variableContext) && feature.ai.variableContext.length > 0) {
+    lines.push('### Variable Context', '');
+    for (const entry of feature.ai.variableContext) {
+      lines.push(`- **${escapeAngleBracketsForVueMarkdown(entry.name)}**: ${escapeAngleBracketsForVueMarkdown(entry.impact)}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## 3. Data Flow (PlantUML Sequence)', '');
   if (!feature.flows || feature.flows.length === 0) {
     lines.push('No feature flows were inferred.');
   } else {
@@ -2141,20 +2147,34 @@ function renderFeaturePage(scanResult, feature, output) {
       for (const step of steps) {
         lines.push(`- ${escapeAngleBracketsForVueMarkdown(step)}`);
       }
-      if (showFlowchart && flow.mermaid) {
-        lines.push('', '#### Flow Diagram', '', renderMermaidDiagram(flow.mermaid), '');
-      }
-      if (showSequence && flow.sequenceMermaid) {
+
+      if (narrative && narrative.plantUml) {
+        lines.push('', '#### Sequence Diagram', '', '```plantuml', narrative.plantUml, '```', '');
+      } else if (showSequence && flow.sequenceMermaid) {
         lines.push('', '#### Sequence Diagram', '', renderMermaidDiagram(flow.sequenceMermaid), '');
+      } else if (showFlowchart && flow.mermaid) {
+        lines.push('', '#### Flow Diagram', '', renderMermaidDiagram(flow.mermaid), '');
       }
     }
   }
 
-  lines.push('', '## Basic Design', '');
+  lines.push('', '## 4. Architecture Mapping', '');
+  lines.push(...renderFeatureFileTable(currentPath, feature.files));
+  lines.push('');
+
+  if (feature.ai && feature.ai.detailDesign && Array.isArray(feature.ai.detailDesign.components) && feature.ai.detailDesign.components.length > 0) {
+    lines.push('### Key Components', '');
+    for (const component of feature.ai.detailDesign.components) {
+      lines.push(`- ${escapeAngleBracketsForVueMarkdown(component.name)} (${escapeAngleBracketsForVueMarkdown(component.layer)}) — ${escapeAngleBracketsForVueMarkdown(component.responsibility)}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('### Design Context', '');
   lines.push(escapeAngleBracketsForVueMarkdown(
     feature.ai && feature.ai.basicDesign ? feature.ai.basicDesign.context : feature.summary,
   ));
-  lines.push('', '### Boundaries', '');
+  lines.push('', '#### Boundaries', '');
   const boundaries = feature.ai && feature.ai.basicDesign && Array.isArray(feature.ai.basicDesign.boundaries) && feature.ai.basicDesign.boundaries.length > 0
     ? feature.ai.basicDesign.boundaries
     : [
@@ -2163,38 +2183,16 @@ function renderFeaturePage(scanResult, feature, output) {
       `Entry points (BE): ${(feature.entryPoints && feature.entryPoints.be ? feature.entryPoints.be.join(', ') : '') || 'n/a'}`,
     ];
   lines.push(...renderStringList(boundaries));
-  lines.push('', '### Context Diagram', '', renderMermaidDiagram(feature.contextDiagram), '');
 
-  lines.push('## Detail Design', '');
-  if (feature.ai && feature.ai.detailDesign) {
-    lines.push(`- Data model: ${escapeAngleBracketsForVueMarkdown(feature.ai.detailDesign.dataModel)}`);
-    lines.push(`- State management: ${escapeAngleBracketsForVueMarkdown(feature.ai.detailDesign.stateManagement)}`);
-    if (Array.isArray(feature.ai.detailDesign.components) && feature.ai.detailDesign.components.length > 0) {
-      lines.push('', '### Components', '');
-      for (const component of feature.ai.detailDesign.components) {
-        lines.push(`- ${escapeAngleBracketsForVueMarkdown(component.name)} (${escapeAngleBracketsForVueMarkdown(component.layer)}) — ${escapeAngleBracketsForVueMarkdown(component.responsibility)}`);
-      }
-    }
-  } else {
-    lines.push(`- Data stores: ${feature.dataStores.length > 0 ? feature.dataStores.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ') : 'n/a'}`);
-    lines.push(`- Integrations: ${feature.integrations.length > 0 ? feature.integrations.map((item) => escapeAngleBracketsForVueMarkdown(item)).join(', ') : 'n/a'}`);
-  }
-  lines.push('', '### Component Diagram', '', renderMermaidDiagram(feature.componentDiagram), '');
-
-  lines.push('## API Contracts', '');
-  if (feature.apiContracts.length === 0) {
-    lines.push('No API contracts were linked to this feature.');
-  } else {
+  if (feature.apiContracts.length > 0) {
+    lines.push('', '### API Contracts', '');
     for (const endpoint of feature.apiContracts) {
       renderApiEndpoint(lines, endpoint, currentPath, getApiEndpointDesign(scanResult, endpoint.id), output);
     }
   }
 
-  lines.push('', '## Edge Cases & Error Handling', '');
+  lines.push('', '### Edge Cases & Error Handling', '');
   renderFeatureEdgeCases(lines, feature);
-
-  lines.push('', '## Related Files', '');
-  lines.push(...renderFeatureFileTable(currentPath, feature.files));
 
   if (feature.ai && Array.isArray(feature.ai.openQuestions) && feature.ai.openQuestions.length > 0) {
     lines.push('', '## Open Questions', '');

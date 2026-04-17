@@ -83,9 +83,18 @@ async function ensureVitePressRuntimeDeps(rootDir) {
     if (error && error.code === 'EEXIST') {
       return;
     }
-    if (error && error.code === 'EPERM') {
-      // On Windows, symlink may fail, skip for now
-      return;
+    if (error && error.code === 'EPERM' && process.platform === 'win32') {
+      // Windows frequently blocks directory symlinks without elevated privileges.
+      // Retry with "junction", which does not require Developer Mode/admin rights.
+      try {
+        await fs.symlink(PACKAGE_NODE_MODULES, target, 'junction');
+        return;
+      } catch (junctionError) {
+        if (junctionError && junctionError.code === 'EEXIST') {
+          return;
+        }
+        throw junctionError;
+      }
     }
     throw error;
   }

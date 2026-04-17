@@ -635,10 +635,11 @@ async function runHotfixSite(cliOptions) {
   const { applySiteHotfix } = require('./siteHotfix');
   const result = await applySiteHotfix(siteRoot, { output: options.output });
 
-  console.log('docs-wiki hotfix-site: patched VitePress client files (no codebase re-scan).');
+  console.log('docs-wiki hotfix-site: patched VitePress client files and sanitized markdown (no codebase re-scan).');
   console.log(`  theme:   ${result.themePath}`);
   console.log(`  mermaid: ${result.mermaidPath}`);
   console.log(`  styles:  ${result.stylesPath}`);
+  console.log(`  markdown: ${result.markdownFilesPatched}/${result.markdownFilesScanned} file(s) patched`);
   console.log('Restart `docs-wiki serve` or run `docs-wiki build-site` to pick up changes.');
 }
 

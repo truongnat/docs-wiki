@@ -42,8 +42,49 @@ function createFence(code, language) {
   return `${delim}${language}\n${body}\n${delim}`;
 }
 
+/**
+ * VitePress treats top-level `import` / `export` lines in Markdown as Vue SFC ESM.
+ * Some generated text (especially multiline parser errors) can accidentally emit those
+ * lines outside code fences and break the build. Prefix those lines with a zero-width
+ * marker entity so they render as plain text while preserving readability.
+ */
+function neutralizeTopLevelMarkdownEsm(markdown) {
+  const lines = String(markdown || '').split('\n');
+  const fenceRegex = /^(\s*)([`~]{3,})(.*)$/;
+  const esmRegex = /^(\s*)(import|export)\s+/;
+  let activeFence = null;
+
+  return lines.map((line) => {
+    const fenceMatch = line.match(fenceRegex);
+    if (fenceMatch) {
+      const marker = fenceMatch[2];
+      const fenceChar = marker[0];
+      const fenceLength = marker.length;
+      if (!activeFence) {
+        activeFence = { fenceChar, fenceLength };
+        return line;
+      }
+      if (activeFence.fenceChar === fenceChar && marker.length >= activeFence.fenceLength) {
+        activeFence = null;
+      }
+      return line;
+    }
+
+    if (!activeFence) {
+      const esmMatch = line.match(esmRegex);
+      if (esmMatch) {
+        const indent = esmMatch[1] || '';
+        const trimmed = line.slice(indent.length);
+        return `${indent}&#8203;${trimmed}`;
+      }
+    }
+    return line;
+  }).join('\n');
+}
+
 module.exports = {
   escapeAngleBracketsForVueMarkdown,
   markdownFencedInlineCode,
   createFence,
+  neutralizeTopLevelMarkdownEsm,
 };

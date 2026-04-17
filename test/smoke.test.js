@@ -976,21 +976,29 @@ test('docs-wiki incremental mode rewrites only changed file pages when content c
   assert.ok(manifest.incremental.reusedFiles.includes('src/index.ts'));
 });
 
-test('docs-wiki hotfix-site patches theme, mermaid, and docs-wiki.css without rescanning', async () => {
+test('docs-wiki hotfix-site patches theme assets and sanitizes markdown without rescanning', async () => {
   const tempDir = await createFixture();
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
   const sitePath = path.join(tempDir, WIKI_DIR);
+  const summaryPath = path.join(sitePath, 'SUMMARY.md');
 
   await execFileAsync(process.execPath, [binPath], { cwd: tempDir });
+  await fs.appendFile(
+    summaryPath,
+    '\nimport { renderToString } from "vue/server-renderer";\n',
+    'utf8',
+  );
   await execFileAsync(process.execPath, [binPath, 'hotfix-site', '--site', sitePath], { cwd: tempDir });
 
   const theme = await fs.readFile(path.join(sitePath, '.vitepress', 'theme', 'index.mjs'), 'utf8');
   const mermaid = await fs.readFile(path.join(sitePath, 'public', 'mermaid.min.js'), 'utf8');
   const styles = await fs.readFile(path.join(sitePath, 'public', 'docs-wiki.css'), 'utf8');
+  const summary = await fs.readFile(summaryPath, 'utf8');
   assert.match(theme, /renderMermaidDiagrams/);
   assert.match(theme, /language-mermaid/);
   assert.match(mermaid, /mermaid/);
   assert.match(styles, /\.docs-wiki-mermaid__toolbar/);
+  assert.match(summary, /&#8203;import \{ renderToString \} from "vue\/server-renderer";/);
 });
 
 test('docs-wiki encodes bracketed file routes so VitePress does not treat them as dynamic pages', async () => {

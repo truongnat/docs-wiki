@@ -75,7 +75,7 @@ npx github:truongnat/docs-wiki preview
 
 ### Hotfix the generated site (no re-scan)
 
-After a long `docs-wiki` run, you can patch **only** the VitePress client bundle (theme entry + `public/mermaid.min.js`) to match your installed `docs-wiki` version—**without** re-analyzing the repo:
+After a long `docs-wiki` run, you can patch the generated site assets and sanitize Markdown (theme entry + `public/mermaid.min.js` + `public/docs-wiki.css` + `.md` guard pass) to match your installed `docs-wiki` version—**without** re-analyzing the repo:
 
 ```bash
 # Default: `<cwd>/.docs-wiki` (respects `docs-wiki.config.json` `outDir` when resolved from `--root`)
@@ -85,7 +85,7 @@ npx github:truongnat/docs-wiki hotfix-site
 npx github:truongnat/docs-wiki hotfix-site --site /path/to/project/.docs-wiki
 ```
 
-Then restart the dev server (`npx github:truongnat/docs-wiki serve`) or run `npx github:truongnat/docs-wiki build-site`. This is intended for fixes such as Mermaid rendering updates; it does **not** regenerate Markdown.
+Then restart the dev server (`npx github:truongnat/docs-wiki serve`) or run `npx github:truongnat/docs-wiki build-site`. This is intended for client/runtime hotfixes such as Mermaid rendering updates and markdown sanitize guards; it does **not** re-run source scanning, Tree-sitter parsing, or AI inference.
 
 Run against another directory:
 

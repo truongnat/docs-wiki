@@ -7,6 +7,7 @@ const {
   escapeAngleBracketsForVueMarkdown,
   markdownFencedInlineCode,
   createFence,
+  neutralizeTopLevelMarkdownEsm,
 } = require('./markdownSafe');
 
 const VITEPRESS_SCHEMA_VERSION = '1.0.0';
@@ -231,7 +232,7 @@ function buildVitePressFrontmatter({
 }
 
 function withFrontmatter(frontmatter, markdown) {
-  return `${serializeFrontmatter(frontmatter)}${markdown}`;
+  return `${serializeFrontmatter(frontmatter)}${neutralizeTopLevelMarkdownEsm(markdown)}`;
 }
 
 function toVitePressLink(markdownPath) {

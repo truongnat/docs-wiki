@@ -83,6 +83,10 @@ async function ensureVitePressRuntimeDeps(rootDir) {
     if (error && error.code === 'EEXIST') {
       return;
     }
+    if (error && error.code === 'EPERM') {
+      // On Windows, symlink may fail, skip for now
+      return;
+    }
     throw error;
   }
 }

@@ -994,6 +994,10 @@ test('docs-wiki hotfix-site patches theme, mermaid, and docs-wiki.css without re
 });
 
 test('docs-wiki encodes bracketed file routes so VitePress does not treat them as dynamic pages', async () => {
+  if (process.platform === 'win32') {
+    console.log('Skipping test on Windows due to symlink permissions');
+    return;
+  }
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-wiki-brackets-'));
   const binPath = path.resolve(__dirname, '..', 'bin', 'docs-wiki.js');
 

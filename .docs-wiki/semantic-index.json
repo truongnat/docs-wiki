@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-04-16T17:34:43.600Z",
+  "projectContext": [
+    "package",
+    "docs",
+    "wiki",
+    "lock",
+    "build",
+    "cli",
+    "createprogressbridge",
+    "parseargs",
+    "printhelp",
+    "printresult"
+  ],
+  "domains": [
+    {
+      "id": "general",
+      "summary": null,
+      "fileCount": 22,
+      "files": [
+        "bin/docs-wiki.js",
+        "package-lock.json",
+        "package.json",
+        "src/ai.js",
+        "src/cli.js",
+        "src/config.js",
+        "src/deploy.js",
+        "src/design.js",
+        "src/drift.js",
+        "src/featureClusterer.js",
+        "src/generator.js",
+        "src/gitignore.js",
+        "src/hash.js",
+        "src/languages.js",
+        "src/markdownSafe.js",
+        "src/scanner.js",
+        "src/semanticIndexer.js",
+        "src/siteHotfix.js",
+        "src/ui.js",
+        "src/vitepress.js",
+        "src/watch.js",
+        "test/smoke.test.js"
+      ]
+    }
+  ]
+}

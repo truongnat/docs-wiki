@@ -5,8 +5,13 @@ const { scaffoldDeploy } = require('./deploy');
 const { enrichWithDesign } = require('./design');
 const { checkDocsDrift, formatDriftReport } = require('./drift');
 const { clusterFeatures, formatFeatureDebug } = require('./featureClusterer');
-const { scanProject } = require('./scanner');
+const { scanProject, generateAtlas } = require('./scanner');
+const { generateSemanticIndex } = require('./semanticIndexer');
 const { writeDocs } = require('./generator');
+const pluginEngine = require('./pluginEngine');
+const LspClient = require('./lspClient');
+const { VectorStore } = require('./vectorDb');
+const { createEmbeddings } = require('./embeddings');
 const { ensureVitePressRuntimeDeps, runVitePress, spawnVitePress } = require('./vitepress');
 const { printBanner, createRunProgress } = require('./ui');
 
@@ -53,6 +58,7 @@ Options:
   --debug-features      Print clustered feature metadata to stdout after the scan.
   --ai                  Enable AI-generated summaries.
   --no-ai               Disable AI summaries even if config enables them.
+<<<<<<< HEAD
   --ai-provider <name>  AI provider: auto, ollama, openai, anthropic, gemini, deepseek.
   --ai-model <name>     Model name for the selected provider.
   --openai-api-key <k>  OpenAI API key override. Defaults to OPENAI_API_KEY.
@@ -60,6 +66,16 @@ Options:
                        Anthropic API key override. Defaults to ANTHROPIC_API_KEY.
   --gemini-api-key <k>  Gemini API key override. Defaults to GEMINI_API_KEY.
   --deepseek-api-key <k> DeepSeek API key override. Defaults to DEEPSEEK_API_KEY.
+=======
+  --atlas               Phase 1: Generate project-atlas.json and exit.
+  --lsp                 Plan B: Enable LSP integration for precise call graph.
+  --rag                 Plan C: Enable RAG with local vector storage for semantic context.
+  --ai-provider <name>  AI provider: auto, ollama, openai.
+  --ai-model <name>     OpenAI model used for summaries. Defaults to ${DEFAULT_AI_MODEL}.
+  --ollama-model-strategy <name>
+                       Ollama selection strategy: exact, family, first-available.
+  --openai-api-key <k>  API key override. Defaults to OPENAI_API_KEY.
+>>>>>>> ccb6555 (feat: implement Next-Gen Multi-pass Architectural Analysis System)
   --locale <en|vi>      Language for AI-generated prose (default: en). Overrides ai.locale and DOCS_WIKI_LOCALE.
   --watch               Watch the repo and rebuild on changes.
   --no-watch            Disable watch mode.
@@ -84,6 +100,9 @@ function parseArgs(argv) {
     maxFilesPerFeature: undefined,
     splitByAction: undefined,
     ai: undefined,
+    atlas: false,
+    lsp: false,
+    rag: false,
     aiProvider: undefined,
     aiModel: undefined,
     ollamaModelStrategy: undefined,
@@ -264,6 +283,21 @@ function parseArgs(argv) {
 
     if (current === '--no-ai') {
       options.ai = false;
+      continue;
+    }
+
+    if (current === '--atlas') {
+      options.atlas = true;
+      continue;
+    }
+
+    if (current === '--lsp') {
+      options.lsp = true;
+      continue;
+    }
+
+    if (current === '--rag') {
+      options.rag = true;
       continue;
     }
 
@@ -509,24 +543,25 @@ async function build(cliOptions, buildMeta = {}) {
   const loadedConfig = await loadUserConfig(cliOptions.root, cliOptions.configPath);
   const options = resolveOptions(cliOptions.root, cliOptions, loadedConfig);
 
+  // Initialize plugins
+  await pluginEngine.loadPlugins(options.plugins, options.root);
+
   if (showBanner && useProgress) {
     printBanner();
   }
 
   const { scan, ai, write } = createProgressBridge(useProgress);
 
-  const { scanResult, previousManifest } = await scanProject(options.root, {
-    outDir: options.outDir,
-    maxFiles: options.maxFiles,
-    include: options.include,
-    ignore: options.ignore,
-    incremental: options.incremental,
-    cache: options.cache,
-    settings: options.settings,
-    onProgress: scan,
-    scanDiagnostics: verbose,
-  });
+  const lspClient = cliOptions.lsp ? new LspClient() : null;
+  if (lspClient) {
+    console.log('Plan B: Starting LSP Server (typescript-language-server)...');
+    const ok = await lspClient.start(options.root);
+    if (!ok) {
+      console.warn('LSP failed to start. Falling back to Heuristics.');
+    }
+  }
 
+<<<<<<< HEAD
   const enrichedResult = await enrichWithAi(scanResult, {
     enabled: options.ai.enabled,
     provider: options.ai.provider,
@@ -552,10 +587,65 @@ async function build(cliOptions, buildMeta = {}) {
     previousManifest,
     onProgress: ai,
   });
+=======
+  try {
+    const { scanResult, previousManifest } = await scanProject(options.root, {
+      outDir: options.outDir,
+      maxFiles: options.maxFiles,
+      include: options.include,
+      ignore: options.ignore,
+      incremental: options.incremental,
+      cache: options.cache,
+      settings: options.settings,
+      onProgress: scan,
+      scanDiagnostics: verbose,
+    });
+>>>>>>> ccb6555 (feat: implement Next-Gen Multi-pass Architectural Analysis System)
 
-  const designedResult = enrichWithDesign(enrichedResult);
-  const clusteredResult = clusterFeatures(designedResult, options.features);
-  const finalResult = await enrichFeaturesWithAi(clusteredResult, {
+    let vectorStore = null;
+    if (cliOptions.rag && options.ai.enabled) {
+      console.log('Plan C: Indexing code for RAG (Semantic Search)...');
+      vectorStore = new VectorStore(path.join(options.root, options.outDir, 'vector-index.json'));
+      await vectorStore.load();
+
+      // Index files (simplified: just symbol names and summaries)
+      for (const file of scanResult.files) {
+        const textToEmbed = `${file.relativePath} ${file.symbols.map(s => s.name).join(' ')}`;
+        try {
+          const vector = await createEmbeddings(textToEmbed, options.ai);
+          vectorStore.add(file.relativePath, { path: file.relativePath }, vector);
+        } catch (e) {
+          console.error(`Failed to embed ${file.relativePath}: ${e.message}`);
+        }
+      }
+      await vectorStore.save();
+    }
+
+    const enrichedResult = await enrichWithAi(scanResult, {
+      enabled: options.ai.enabled,
+      provider: options.ai.provider,
+      model: options.ai.model,
+      apiKey: options.ai.apiKey,
+      baseURL: options.ai.baseURL,
+      ollamaBaseURL: options.ai.ollamaBaseURL,
+      ollamaModel: options.ai.ollamaModel,
+      ollamaModelStrategy: options.ai.ollamaModelStrategy,
+      ollamaApiKey: options.ai.ollamaApiKey,
+      reasoningEffort: options.ai.reasoningEffort,
+      filePrompt: options.ai.filePrompt,
+      modulePrompt: options.ai.modulePrompt,
+      projectPrompt: options.ai.projectPrompt,
+      locale: options.ai.locale,
+      previousManifest,
+      onProgress: ai,
+      vectorStore, // Pass to AI enrichment
+    });
+  let designedResult = enrichWithDesign(enrichedResult, { lspClient });
+  designedResult = await pluginEngine.runHook('onEnrichDesign', designedResult, { options });
+
+  let clusteredResult = clusterFeatures(designedResult, options.features);
+  clusteredResult = await pluginEngine.runHook('onClusterFeatures', clusteredResult, { options });
+  let finalResult = await enrichFeaturesWithAi(clusteredResult, {
     enabled: options.ai.enabled,
     provider: options.ai.provider,
     model: options.ai.model,
@@ -578,6 +668,8 @@ async function build(cliOptions, buildMeta = {}) {
     previousManifest,
   });
 
+  finalResult = await pluginEngine.runHook('onBeforeWrite', finalResult, { options });
+
   if (cliOptions.debugFeatures) {
     console.log(formatFeatureDebug(finalResult.features));
   }
@@ -592,6 +684,11 @@ async function build(cliOptions, buildMeta = {}) {
     options,
     result: finalResult,
   };
+} finally {
+  if (lspClient) {
+    lspClient.stop();
+  }
+}
 }
 
 async function runCheck(cliOptions) {
@@ -661,6 +758,42 @@ async function runCli(argv) {
 
   if (cliOptions.command === 'hotfix-site') {
     await runHotfixSite(cliOptions);
+    return;
+  }
+
+  if (cliOptions.atlas) {
+    const loadedConfig = await loadUserConfig(cliOptions.root, cliOptions.configPath);
+    const options = resolveOptions(cliOptions.root, cliOptions, loadedConfig);
+    const { scan } = createProgressBridge(cliOptions.progress !== false && process.stderr.isTTY);
+    
+    console.log(`Phase 1: Generating project atlas for ${options.root}...`);
+    await generateAtlas(options.root, {
+      outDir: options.outDir,
+      maxFiles: options.maxFiles,
+      include: options.include,
+      ignore: options.ignore,
+      onProgress: scan,
+    });
+    
+    console.log(`Phase 2: Generating semantic index (grouping & chunking)...`);
+    await generateSemanticIndex(options.root, {
+      outDir: options.outDir,
+      ai: {
+        enabled: options.ai.enabled,
+        provider: options.ai.provider,
+        model: options.ai.model,
+        apiKey: options.ai.apiKey,
+        baseURL: options.ai.baseURL,
+        ollamaBaseURL: options.ai.ollamaBaseURL,
+        ollamaModel: options.ai.ollamaModel,
+        ollamaModelStrategy: options.ai.ollamaModelStrategy,
+        ollamaApiKey: options.ai.ollamaApiKey,
+        reasoningEffort: options.ai.reasoningEffort,
+        locale: options.ai.locale,
+      }
+    });
+
+    console.log(`\nSuccess! Atlas and Semantic Index generated in ${options.outDir}`);
     return;
   }
 

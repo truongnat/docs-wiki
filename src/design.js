@@ -259,7 +259,7 @@ function addEdge(edgeMap, from, to, payload = {}) {
   }
 }
 
-function buildInteractionGraph(scanResult) {
+function buildInteractionGraph(scanResult, lspClient = null) {
   const filesByPath = new Map(scanResult.files.map((file) => [file.relativePath, file]));
   const knownExtensions = unique(scanResult.files.map((file) => file.extension));
   const fileNodes = new Map();
@@ -276,6 +276,7 @@ function buildInteractionGraph(scanResult) {
     });
   }
 
+  // Hybrid Analysis: Start with Heuristics
   for (const file of scanResult.files) {
     for (const specifier of file.imports || []) {
       const resolved = resolveLocalImport(file.relativePath, specifier, filesByPath, knownExtensions);
@@ -299,6 +300,13 @@ function buildInteractionGraph(scanResult) {
         });
       }
     }
+  }
+
+  // Hybrid Analysis: Enhance with LSP if available
+  // This is a placeholder for real-time LSP resolution of apiCalls
+  // In a real run, we would iterate through symbols and ask LSP "where is this defined?"
+  if (lspClient) {
+    // console.log('Plan B: Deep Tracing symbols via LSP...');
   }
 
   for (const edge of fileEdgeMap.values()) {
@@ -1072,9 +1080,10 @@ function buildEndpointDesigns(scanResult, graph, fileInsights) {
   });
 }
 
-function enrichWithDesign(scanResult) {
+function enrichWithDesign(scanResult, context = {}) {
+  const { lspClient = null } = context;
   const rawInsights = new Map(scanResult.files.map((file) => [file.relativePath, buildFileInsights(file)]));
-  const graph = buildInteractionGraph(scanResult);
+  const graph = buildInteractionGraph(scanResult, lspClient);
   const aiModulesByDirectory = new Map(
     scanResult.ai && Array.isArray(scanResult.ai.modules)
       ? scanResult.ai.modules.map((module) => [module.directory, module])

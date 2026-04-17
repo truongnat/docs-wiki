@@ -572,16 +572,25 @@ function buildFeature(scanResult, domainDefinitions, domainId, actionId, selecte
     ...(endpoint.responseSchemas || []),
   ]).map((schema) => schema && JSON.stringify(schema))).map((entry) => JSON.parse(entry));
 
-  // Cross-Layer API Client Linkage
+  // Cross-Layer API Client Linkage (FE call -> BE Endpoint)
   const linkedEndpoints = [];
   for (const file of selectedFiles) {
     if (file.apiCalls) {
       for (const call of file.apiCalls) {
-        const matchedApi = (scanResult.api && scanResult.api.endpoints || []).find(e => 
-          e.path === call.path && e.method === call.method
-        );
+        // Try to match call.path (e.g. /api/users) to an actual backend endpoint
+        const matchedApi = (scanResult.api && scanResult.api.endpoints || []).find(e => {
+          // Basic matching: either exact match or matches Next.js style dynamic paths
+          const callPath = call.path.split('?')[0];
+          const apiPath = e.path;
+          return e.method === call.method && (callPath === apiPath || apiPath.includes(':') || apiPath.includes('['));
+        });
         if (matchedApi) {
-          linkedEndpoints.push(matchedApi);
+          linkedEndpoints.push({
+            from: file.relativePath,
+            to: matchedApi.file,
+            method: matchedApi.method,
+            path: matchedApi.path
+          });
         }
       }
     }

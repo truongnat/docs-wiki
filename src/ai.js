@@ -1,6 +1,8 @@
 const OpenAI = require('openai');
 const { zodTextFormat } = require('openai/helpers/zod');
 const { z } = require('zod');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
 const DEFAULT_AI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-sonnet-latest';
@@ -71,6 +73,11 @@ const ModuleSummarySchema = z.object({
     name: z.string(),
     goal: z.string(),
   })).max(4).default([]),
+});
+
+const DomainSummarySchema = z.object({
+  summary: z.string(),
+  businessImpact: z.string(),
 });
 
 const FeatureSummarySchema = z.object({
@@ -146,7 +153,7 @@ function clip(value, limit) {
   return `${value.slice(0, limit)}\n... [truncated]`;
 }
 
-function buildFilePrompt(file) {
+function buildFilePrompt(file, context = {}) {
   const symbolBlocks = file.symbols.map((symbol) => {
     const body = clip(symbol.code, 1200);
     return [
@@ -160,7 +167,21 @@ function buildFilePrompt(file) {
     ].join('\n');
   });
 
+  const contextParts = [];
+  if (context.projectKeywords) {
+    contextParts.push(`Project Keywords: ${context.projectKeywords.join(', ')}`);
+  }
+  if (context.domainSummary) {
+    contextParts.push(`Domain Context (${context.domainId}): ${context.domainSummary}`);
+  }
+  if (context.relatedFiles && context.relatedFiles.length > 0) {
+    contextParts.push(`Related Context (Semantic Search): ${context.relatedFiles.join(', ')}`);
+  }
+
   return [
+    contextParts.length > 0 ? '--- GLOBAL CONTEXT ---' : '',
+    contextParts.join('\n'),
+    contextParts.length > 0 ? '----------------------\n' : '',
     `File: ${file.relativePath}`,
     `Language: ${file.language}`,
     `Lines: ${file.lineCount}`,
@@ -274,8 +295,13 @@ function buildFeaturePrompt(feature, scanResult) {
     `responses: ${(endpoint.responses || []).map((response) => `${response.status}:${(response.bodyKeys || []).join(', ')}`).join(' | ') || 'n/a'}`,
   ].join('\n'));
 
-  const linked = (feature.linkedEndpoints || []).slice(0, 8).map((endpoint) => `Linked FE->BE Call: ${endpoint.method} ${endpoint.path}`);
-  const vars = (feature.globalVariables || []).slice(0, 8).map((v) => `${v.name} (appears ${v.occurrences} times)`);
+  const linked = (feature.linkedEndpoints || []).slice(0, 8).map((l) => `Handshake: ${l.from} calls ${l.method} ${l.path} in ${l.to}`);
+  
+  // Build DI context (look for @Injectable and where they might be used)
+  const injectables = feature.files
+    .map(f => fileMap.get(f.path))
+    .filter(f => f && f.symbols.some(s => s.decorators?.some(d => d.includes('@Injectable'))))
+    .map(f => f.relativePath);
 
   return [
     `Feature: ${feature.title}`,
@@ -283,14 +309,16 @@ function buildFeaturePrompt(feature, scanResult) {
     `Action: ${feature.actionLabel || 'n/a'}`,
     `Summary: ${feature.summary || 'n/a'}`,
     '',
+    'Architectural Metadata:',
+    `- Identified @Injectable services in this feature: ${injectables.join(', ') || 'none'}`,
+    `- Discovered Cross-Layer API Handshakes (Frontend -> Backend):`,
+    linked.length > 0 ? linked.map(l => `  * ${l}`).join('\n') : '  * None identified',
+    '',
     'Global Business Variables identified:',
     vars.length > 0 ? vars.join('\n') : 'None identified',
     '',
-    'Linked FE->BE API Handshakes discovered:',
-    linked.length > 0 ? linked.join('\n') : 'None identified',
-    '',
     'Generate feature-oriented design docs for this cluster.',
-    'Use business language and explain the end-to-end journey across UI, API, services, and persistence.',
+    'Use the Handshake and DI information to explain how the Frontend communicates with the Backend and how services are composed.',
     '',
     'Files:',
     fileBlocks.length > 0 ? fileBlocks.join('\n\n') : '(no files)',
@@ -948,7 +976,7 @@ function coerceFeatureSummary(raw, feature) {
   });
 }
 
-async function summarizeFile(client, file, options, providerInfo) {
+async function summarizeFile(client, file, options, providerInfo, context = {}) {
   const systemPrompt = appendLocaleToSystemPrompt(
     options.filePrompt
       ? `${DEFAULT_FILE_SYSTEM_PROMPT}\n\nAdditional instruction:\n${options.filePrompt}`
@@ -964,7 +992,7 @@ async function summarizeFile(client, file, options, providerInfo) {
         { role: 'system', content: `${systemPrompt}\nReturn valid JSON only.` },
         {
           role: 'user',
-          content: `${buildFilePrompt(file)}\n\nReturn a JSON object with this exact shape:
+          content: `${buildFilePrompt(file, context)}\n\nReturn a JSON object with this exact shape:
 {
   "summary": "string",
   "responsibilities": ["string"],
@@ -986,7 +1014,7 @@ async function summarizeFile(client, file, options, providerInfo) {
     reasoning: { effort: options.reasoningEffort },
     input: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: buildFilePrompt(file) },
+      { role: 'user', content: buildFilePrompt(file, context) },
     ],
     text: {
       format: zodTextFormat(FileSummarySchema, 'file_summary'),
@@ -1045,6 +1073,52 @@ async function summarizeModule(client, module, files, options, providerInfo) {
     ],
     text: {
       format: zodTextFormat(ModuleSummarySchema, 'module_summary'),
+    },
+  });
+
+  return response.output_parsed;
+}
+
+function coerceDomainSummary(raw, domainId) {
+  return DomainSummarySchema.parse({
+    summary: normalizeString(raw && raw.summary) || `Domain ${domainId} handles related business logic.`,
+    businessImpact: normalizeString(raw && raw.businessImpact) || 'Provides core functionality for the system.',
+  });
+}
+
+async function summarizeDomain(client, domainId, atlasFiles, options, providerInfo) {
+  const systemPrompt = appendLocaleToSystemPrompt(
+    'You generate a very brief business-oriented summary for a domain based on a list of related files and symbols. Focus on what this domain does for the business.',
+    options.locale,
+  );
+
+  const fileInfo = atlasFiles.slice(0, 30).map(f => `${f.relativePath} (${f.symbols.map(s => s.name).slice(0, 5).join(', ')})`).join('\n');
+
+  if (providerInfo.provider === 'ollama') {
+    const response = await client.chat.completions.create({
+      model: providerInfo.model,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: `${systemPrompt}\nReturn valid JSON only.` },
+        {
+          role: 'user',
+          content: `Domain: ${domainId}\nFiles:\n${fileInfo}\n\nReturn JSON: { "summary": "...", "businessImpact": "..." }`,
+        },
+      ],
+    });
+    const content = response.choices[0]?.message?.content || '';
+    return coerceDomainSummary(extractJsonPayload(content), domainId);
+  }
+
+  const response = await client.responses.parse({
+    model: providerInfo.model,
+    reasoning: { effort: options.reasoningEffort },
+    input: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Domain: ${domainId}\nFiles:\n${fileInfo}` },
+    ],
+    text: {
+      format: zodTextFormat(DomainSummarySchema, 'domain_summary'),
     },
   });
 
@@ -1232,6 +1306,28 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
 
   const providerInfo = await resolveAiProvider(options, rawOptions.dependencies);
   const client = providerInfo.client;
+
+  // Load semantic index for context injection
+  let semanticIndex = null;
+  try {
+    const indexPath = path.join(scanResult.rootDir, scanResult.outDir, 'semantic-index.json');
+    const content = await fs.readFile(indexPath, 'utf8');
+    semanticIndex = JSON.parse(content);
+  } catch (e) {
+    // Ignore if not found
+  }
+
+  const fileToDomain = new Map();
+  const domainSummaries = new Map();
+  if (semanticIndex) {
+    for (const domain of semanticIndex.domains) {
+      domainSummaries.set(domain.id, domain.summary ? domain.summary.summary : null);
+      for (const filePath of domain.files) {
+        fileToDomain.set(filePath, domain.id);
+      }
+    }
+  }
+
   const sourceChanged = new Set(scanResult.incremental.changedFiles);
   const previousManifest = options.previousManifest;
   const canReuseAi = Boolean(previousManifest && previousManifest.cache && previousManifest.cache.aiKey === scanResult.cache.aiKey);
@@ -1282,7 +1378,29 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     }
 
     try {
-      const parsed = await summarizeFile(client, file, options, providerInfo);
+      const domainId = fileToDomain.get(file.relativePath);
+      const context = {
+        projectKeywords: semanticIndex ? semanticIndex.projectContext : [],
+        domainId,
+        domainSummary: domainId ? domainSummaries.get(domainId) : null,
+        relatedFiles: []
+      };
+
+      // Plan C: Semantic Retrieval
+      if (rawOptions.vectorStore) {
+        try {
+          const { createEmbeddings } = require('./embeddings');
+          const queryVector = await createEmbeddings(file.relativePath, options);
+          const related = rawOptions.vectorStore.search(queryVector, 5);
+          context.relatedFiles = related
+            .filter(r => r.id !== file.relativePath)
+            .map(r => r.id);
+        } catch (e) {
+          // Ignore RAG errors
+        }
+      }
+
+      const parsed = await summarizeFile(client, file, options, providerInfo, context);
       files.push(applyFileSummary(file, parsed));
       aiChangedFiles.push(file.relativePath);
     } catch (error) {
@@ -1562,4 +1680,5 @@ module.exports = {
   resolveAiProvider,
   enrichWithAi,
   enrichFeaturesWithAi,
+  summarizeDomain,
 };

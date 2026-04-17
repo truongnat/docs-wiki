@@ -99,12 +99,23 @@ function isRustExported(node, source) {
   return /\bpub\b/.test(header);
 }
 
-function buildSymbol({ kind, name, signature, node, source, exported = false }) {
+function getDecorators(node, source) {
+  const decorators = [];
+  let current = node.previousNamedSibling;
+  while (current && current.type === 'decorator') {
+    decorators.push(normalizeWhitespace(getNodeText(source, current)));
+    current = current.previousNamedSibling;
+  }
+  return decorators.reverse();
+}
+
+function buildSymbol({ kind, name, signature, node, source, exported = false, decorators = [] }) {
   return {
     kind,
     name,
     signature: signature || name,
     exported,
+    decorators,
     code: getNodeText(source, node),
     ...getLineRange(node),
   };
@@ -122,6 +133,7 @@ function extractJavaScriptLike(rootNode, source) {
         name: getNodeText(source, nameNode),
         signature: headerBeforeBody(source, node, 'body'),
         exported: isJavaScriptExported(node),
+        decorators: getDecorators(node.parent && node.parent.type === 'export_statement' ? node.parent : node, source),
         node,
         source,
       }));
@@ -136,6 +148,7 @@ function extractJavaScriptLike(rootNode, source) {
         name: getNodeText(source, nameNode),
         signature: headerBeforeBody(source, node, 'body'),
         exported: isJavaScriptExported(node),
+        decorators: getDecorators(node.parent && node.parent.type === 'export_statement' ? node.parent : node, source),
         node,
         source,
       }));
@@ -150,6 +163,7 @@ function extractJavaScriptLike(rootNode, source) {
         name: normalizeWhitespace(getNodeText(source, nameNode)),
         signature: headerBeforeBody(source, node, 'body'),
         exported: isJavaScriptExported(node),
+        decorators: getDecorators(node, source),
         node,
         source,
       }));
@@ -508,4 +522,5 @@ function createParser(extension) {
 module.exports = {
   LANGUAGE_CONFIGS,
   createParser,
+  visit,
 };

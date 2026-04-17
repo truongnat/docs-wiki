@@ -1,7 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const fg = require('fast-glob');
-const { LANGUAGE_CONFIGS, createParser } = require('./languages');
+const { LANGUAGE_CONFIGS, createParser, visit } = require('./languages');
+const pluginEngine = require('./pluginEngine');
 const { hashText } = require('./hash');
 const { DEFAULT_OUT_DIR } = require('./config');
 
@@ -414,19 +415,25 @@ function extractDependencies(extension, source) {
     }
     
     // API Calls (FE/Client detection)
-    for (const match of source.matchAll(/\b(axios|fetch|api|client)\.(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\3/gi)) {
-      apiCalls.push({
-        method: match[2].toUpperCase(),
-        path: match[4],
-        tool: match[1]
-      });
-    }
-    for (const match of source.matchAll(/\bfetch\s*\(\s*(['"`])([^'"`]+)\1\s*,\s*\{\s*method\s*:\s*(['"`])(\w+)\3/gi)) {
-      apiCalls.push({
-        method: match[4].toUpperCase(),
-        path: match[2],
-        tool: 'fetch'
-      });
+    const clientCallPatterns = [
+      /\b(axios|fetch|api|client)\.(get|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\3/gi,
+      /\bfetch\s*\(\s*(['"`])([^'"`]+)\1\s*,\s*\{\s*method\s*:\s*(['"`])(\w+)\3/gi,
+      /useFetch\s*\(\s*(['"`])([^'"`]+)\1/gi,
+      /SWR\s*\(\s*(['"`])([^'"`]+)\1/gi
+    ];
+
+    for (const pattern of clientCallPatterns) {
+      for (const match of source.matchAll(pattern)) {
+        const method = (match[5] || match[1] || 'GET').toUpperCase();
+        const path = match[4] || match[2];
+        if (path && !path.startsWith('http')) {
+          apiCalls.push({
+            method: HTTP_METHODS.includes(method) ? method : 'GET',
+            path: path,
+            tool: match[1] || 'useFetch'
+          });
+        }
+      }
     }
 
     for (const match of source.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g)) {
@@ -1083,6 +1090,39 @@ function inferApiContracts(relativePath, extension, source, symbols) {
     }
   }
 
+  // Decorator-based inference (NestJS, etc.)
+  for (const symbol of symbols || []) {
+    if (symbol.kind === 'class') {
+      const controllerDec = symbol.decorators?.find(d => d.startsWith('@Controller'));
+      if (controllerDec) {
+        const basePathMatch = controllerDec.match(/@Controller\(['"]([^'"]+)['"]\)/);
+        const basePath = basePathMatch ? basePathMatch[1] : '';
+
+        // Check methods in this class
+        const methods = symbols.filter(s => s.kind === 'method' && s.startLine > symbol.startLine && s.endLine < symbol.endLine);
+        for (const method of methods) {
+          const httpDec = method.decorators?.find(d => /@(Get|Post|Put|Patch|Delete|All)/.test(d));
+          if (httpDec) {
+            const verbMatch = httpDec.match(/@(Get|Post|Put|Patch|Delete|All)/);
+            const pathMatch = httpDec.match(/\(['"]([^'"]+)['"]\)/);
+            
+            const verb = verbMatch ? verbMatch[1] : 'GET';
+            const subPath = pathMatch ? pathMatch[1] : '';
+            const fullPath = `/${basePath}/${subPath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+
+            addEndpoint({
+              framework: 'nestjs-like',
+              method: verb === 'All' ? 'ALL' : verb.toUpperCase(),
+              routePath: fullPath,
+              handlerName: method.name,
+              offset: method.startLine,
+            });
+          }
+        }
+      }
+    }
+  }
+
   return endpoints.sort((left, right) => {
     if (left.path !== right.path) {
       return left.path.localeCompare(right.path);
@@ -1429,8 +1469,9 @@ async function scanProject(rootDir, options = {}) {
         continue;
       }
 
-      const record = parseFileFromSource(rootDir, relativePath, source);
+      let record = parseFileFromSource(rootDir, relativePath, source);
       if (record) {
+        record = await pluginEngine.runHook('onScanFile', record, { rootDir });
         scannedFiles.push(record);
         changedFiles.push(relativePath);
       }
@@ -1547,7 +1588,127 @@ async function scanProject(rootDir, options = {}) {
   };
 }
 
+function extractKeywords(text) {
+  if (!text) return [];
+  return text
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(word => word.length > 2)
+    .map(word => word.toLowerCase());
+}
+
+function parseAtlasMetadata(rootDir, relativePath, source) {
+  const extension = path.extname(relativePath).toLowerCase();
+  const config = LANGUAGE_CONFIGS[extension];
+  if (!config) return null;
+
+  let symbols = [];
+  let imports = [];
+  let decorators = [];
+
+  if (config.plainText) {
+    // For plain text, we don't extract much in Atlas pass
+  } else {
+    try {
+      const parser = createParser(extension);
+      const tree = parser.parse(source);
+      
+      // Basic symbol extraction (just names and kinds)
+      const rawSymbols = config.extractSymbols(tree.rootNode, source);
+      symbols = rawSymbols.map(s => ({
+        name: s.name,
+        kind: s.kind,
+        exported: s.exported,
+        decorators: s.decorators || []
+      }));
+
+      // Extract decorators (if supported by language)
+      if (['.ts', '.tsx'].includes(extension)) {
+        visit(tree.rootNode, (node) => {
+          if (node.type === 'decorator') {
+            const decText = source.slice(node.startIndex, node.endIndex).trim();
+            decorators.push(decText);
+          }
+        });
+      }
+
+      const deps = extractDependencies(extension, source);
+      imports = deps.imports;
+    } catch (e) {
+      // Ignore parse errors for Atlas
+    }
+  }
+
+  const filenameKeywords = extractKeywords(path.basename(relativePath, extension));
+  const symbolKeywords = symbols.flatMap(s => extractKeywords(s.name));
+
+  return {
+    relativePath,
+    extension,
+    language: config.label,
+    symbols,
+    imports,
+    decorators: uniqueStrings(decorators),
+    keywords: uniqueStrings([...filenameKeywords, ...symbolKeywords])
+  };
+}
+
+async function generateAtlas(rootDir, options = {}) {
+  const outDir = options.outDir || DEFAULT_OUT_DIR;
+  const maxFiles = Number.isFinite(options.maxFiles) ? options.maxFiles : Infinity;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
+  onProgress?.({ type: 'discover_start' });
+  const files = await discoverFiles(rootDir, outDir, maxFiles, options.include, options.ignore);
+  onProgress?.({ type: 'discover_done', count: files.length });
+
+  const atlasFiles = [];
+  const globalKeywords = new Map();
+
+  for (let index = 0; index < files.length; index++) {
+    const relativePath = files[index];
+    onProgress?.({
+      type: 'parse_progress',
+      current: index + 1,
+      total: files.length,
+      file: relativePath,
+    });
+
+    try {
+      const source = await fs.readFile(path.join(rootDir, relativePath), 'utf8');
+      const metadata = parseAtlasMetadata(rootDir, relativePath, source);
+      if (metadata) {
+        atlasFiles.push(metadata);
+        metadata.keywords.forEach(kw => {
+          globalKeywords.set(kw, (globalKeywords.get(kw) || 0) + 1);
+        });
+      }
+    } catch (e) {
+      // Skip failed files
+    }
+  }
+
+  const topKeywords = Array.from(globalKeywords.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 100)
+    .map(([word]) => word);
+
+  const atlas = {
+    projectName: path.basename(rootDir),
+    generatedAt: new Date().toISOString(),
+    topKeywords,
+    files: atlasFiles
+  };
+
+  const atlasPath = path.join(rootDir, outDir, 'project-atlas.json');
+  await fs.mkdir(path.dirname(atlasPath), { recursive: true });
+  await fs.writeFile(atlasPath, JSON.stringify(atlas, null, 2));
+
+  return atlas;
+}
+
 module.exports = {
   scanProject,
+  generateAtlas,
   computeUnindexedExtensionStats,
 };
+

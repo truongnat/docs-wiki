@@ -220,6 +220,7 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       splitByAction: cliOptions.splitByAction ?? normalizeBoolean(featureConfig.splitByAction, DEFAULT_FEATURE_OPTIONS.splitByAction),
       customDomains: normalizeCustomDomains(featureConfig.customDomains),
     },
+    plugins: Array.isArray(fileConfig.plugins) ? fileConfig.plugins : [],
     ai: {
       enabled: cliOptions.ai ?? normalizeBoolean(aiConfig.enabled, false),
       provider: cliOptions.aiProvider ?? aiConfig.provider ?? 'auto',

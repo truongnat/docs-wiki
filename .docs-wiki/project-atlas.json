@@ -1,0 +1,967 @@
+{
+  "projectName": "docs-wiki",
+  "generatedAt": "2026-04-16T17:34:43.594Z",
+  "topKeywords": [
+    "package",
+    "docs",
+    "wiki",
+    "lock",
+    "build",
+    "cli",
+    "createprogressbridge",
+    "parseargs",
+    "printhelp",
+    "printresult",
+    "runcheck",
+    "runcli",
+    "runhotfixsite",
+    "scan",
+    "waitforchildexit",
+    "write",
+    "config",
+    "loaduserconfig",
+    "normalizeailocale",
+    "normalizeboolean",
+    "normalizecustomdomains",
+    "normalizeflowdiagrammode",
+    "normalizemaxfiles",
+    "normalizepositivenumber",
+    "normalizetemplate",
+    "normalizethemepreset",
+    "resolveoptions",
+    "resolveoutput",
+    "toarray",
+    "deploy",
+    "rendergithubpagesworkflow",
+    "rendervercelconfig",
+    "scaffolddeploy",
+    "writescaffoldfile",
+    "design",
+    "buildfreshstate",
+    "checkdocsdrift",
+    "difffingerprints",
+    "drift",
+    "fingerprintendpoint",
+    "fingerprintfeature",
+    "formatdriftreport",
+    "hydratecachedai",
+    "mapby",
+    "sortobject",
+    "stablestringify",
+    "uniquesorted",
+    "featureclusterer",
+    "generator",
+    "ensuregitignoreoutdir",
+    "gitignore",
+    "gitignoreentryline",
+    "shouldmanagegitignore",
+    "hash",
+    "hashobject",
+    "hashtext",
+    "stableserialize",
+    "buildsymbol",
+    "createparser",
+    "enclosingscope",
+    "extractgo",
+    "extractjavascriptlike",
+    "extractplaintextfile",
+    "extractpython",
+    "extractrust",
+    "getlinerange",
+    "getnodetext",
+    "hasancestortype",
+    "headerbeforebody",
+    "isgoexported",
+    "isjavascriptexported",
+    "ispythonexported",
+    "isrustexported",
+    "istoplevelvariablefunction",
+    "languages",
+    "normalizewhitespace",
+    "truncateplainsource",
+    "visit",
+    "createfence",
+    "escapeanglebracketsforvuemarkdown",
+    "markdownfencedinlinecode",
+    "markdownsafe",
+    "scanner",
+    "generatesemanticindex",
+    "scoredomain",
+    "semanticindexer",
+    "tokenize",
+    "applysitehotfix",
+    "sitehotfix",
+    "clearline",
+    "createrunprogress",
+    "getversion",
+    "info",
+    "phaseend",
+    "phaseprogress",
+    "phasestart",
+    "printbanner",
+    "truncatepath",
+    "createvitepressargs",
+    "ensurevitepressruntimedeps"
+  ],
+  "files": [
+    {
+      "relativePath": "bin/docs-wiki.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [
+        "../src/cli"
+      ],
+      "decorators": [],
+      "keywords": [
+        "docs",
+        "wiki"
+      ]
+    },
+    {
+      "relativePath": "package-lock.json",
+      "extension": ".json",
+      "language": "JSON",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "lock",
+        "package"
+      ]
+    },
+    {
+      "relativePath": "package.json",
+      "extension": ".json",
+      "language": "JSON",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "package"
+      ]
+    },
+    {
+      "relativePath": "src/ai.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": []
+    },
+    {
+      "relativePath": "src/cli.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "printHelp",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "parseArgs",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "printResult",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "createProgressBridge",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "scan",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "ai",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "write",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "waitForChildExit",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "build",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "runCheck",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "runHotfixSite",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "runCli",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./ai",
+        "./config",
+        "./deploy",
+        "./design",
+        "./drift",
+        "./featureClusterer",
+        "./generator",
+        "./scanner",
+        "./semanticIndexer",
+        "./siteHotfix",
+        "./ui",
+        "./vitepress",
+        "./watch",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "build",
+        "cli",
+        "createprogressbridge",
+        "parseargs",
+        "printhelp",
+        "printresult",
+        "runcheck",
+        "runcli",
+        "runhotfixsite",
+        "scan",
+        "waitforchildexit",
+        "write"
+      ]
+    },
+    {
+      "relativePath": "src/config.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "toArray",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeBoolean",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeMaxFiles",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizePositiveNumber",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeCustomDomains",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeTemplate",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeThemePreset",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeFlowDiagramMode",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeAiLocale",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "loadUserConfig",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "resolveOutput",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "resolveOptions",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./ai",
+        "./hash",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "config",
+        "loaduserconfig",
+        "normalizeailocale",
+        "normalizeboolean",
+        "normalizecustomdomains",
+        "normalizeflowdiagrammode",
+        "normalizemaxfiles",
+        "normalizepositivenumber",
+        "normalizetemplate",
+        "normalizethemepreset",
+        "resolveoptions",
+        "resolveoutput",
+        "toarray"
+      ]
+    },
+    {
+      "relativePath": "src/deploy.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "renderGitHubPagesWorkflow",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "renderVercelConfig",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "writeScaffoldFile",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "scaffoldDeploy",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./config",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "deploy",
+        "rendergithubpagesworkflow",
+        "rendervercelconfig",
+        "scaffolddeploy",
+        "writescaffoldfile"
+      ]
+    },
+    {
+      "relativePath": "src/design.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "design"
+      ]
+    },
+    {
+      "relativePath": "src/drift.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "uniqueSorted",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "sortObject",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "stableStringify",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "mapBy",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "fingerprintEndpoint",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "fingerprintFeature",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "diffFingerprints",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "hydrateCachedAi",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "buildFreshState",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "checkDocsDrift",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "formatDriftReport",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./design",
+        "./featureClusterer"
+      ],
+      "decorators": [],
+      "keywords": [
+        "buildfreshstate",
+        "checkdocsdrift",
+        "difffingerprints",
+        "drift",
+        "fingerprintendpoint",
+        "fingerprintfeature",
+        "formatdriftreport",
+        "hydratecachedai",
+        "mapby",
+        "sortobject",
+        "stablestringify",
+        "uniquesorted"
+      ]
+    },
+    {
+      "relativePath": "src/featureClusterer.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "featureclusterer"
+      ]
+    },
+    {
+      "relativePath": "src/generator.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "generator"
+      ]
+    },
+    {
+      "relativePath": "src/gitignore.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "ensureGitignoreOutDir",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "shouldManageGitignore",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "gitignoreEntryLine",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "ensuregitignoreoutdir",
+        "gitignore",
+        "gitignoreentryline",
+        "shouldmanagegitignore"
+      ]
+    },
+    {
+      "relativePath": "src/hash.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "stableSerialize",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "hashText",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "hashObject",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "node:crypto"
+      ],
+      "decorators": [],
+      "keywords": [
+        "hash",
+        "hashobject",
+        "hashtext",
+        "stableserialize"
+      ]
+    },
+    {
+      "relativePath": "src/languages.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "visit",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "getNodeText",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "getLineRange",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "normalizeWhitespace",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "headerBeforeBody",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "enclosingScope",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "isTopLevelVariableFunction",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "hasAncestorType",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "isJavaScriptExported",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "isPythonExported",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "isGoExported",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "isRustExported",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "buildSymbol",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "extractJavaScriptLike",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "extractPython",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "extractGo",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "extractRust",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "truncatePlainSource",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "extractPlainTextFile",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "createParser",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "tree-sitter",
+        "tree-sitter-go",
+        "tree-sitter-javascript",
+        "tree-sitter-python",
+        "tree-sitter-rust",
+        "tree-sitter-typescript"
+      ],
+      "decorators": [],
+      "keywords": [
+        "buildsymbol",
+        "createparser",
+        "enclosingscope",
+        "extractgo",
+        "extractjavascriptlike",
+        "extractplaintextfile",
+        "extractpython",
+        "extractrust",
+        "getlinerange",
+        "getnodetext",
+        "hasancestortype",
+        "headerbeforebody",
+        "isgoexported",
+        "isjavascriptexported",
+        "ispythonexported",
+        "isrustexported",
+        "istoplevelvariablefunction",
+        "languages",
+        "normalizewhitespace",
+        "truncateplainsource",
+        "visit"
+      ]
+    },
+    {
+      "relativePath": "src/markdownSafe.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "escapeAngleBracketsForVueMarkdown",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "markdownFencedInlineCode",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "createFence",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "createfence",
+        "escapeanglebracketsforvuemarkdown",
+        "markdownfencedinlinecode",
+        "markdownsafe"
+      ]
+    },
+    {
+      "relativePath": "src/scanner.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "scanner"
+      ]
+    },
+    {
+      "relativePath": "src/semanticIndexer.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "tokenize",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "scoreDomain",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "generateSemanticIndex",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./ai",
+        "./hash",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "generatesemanticindex",
+        "scoredomain",
+        "semanticindexer",
+        "tokenize"
+      ]
+    },
+    {
+      "relativePath": "src/siteHotfix.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "applySiteHotfix",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "./generator",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "applysitehotfix",
+        "sitehotfix"
+      ]
+    },
+    {
+      "relativePath": "src/ui.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "getVersion",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "printBanner",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "truncatePath",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "createRunProgress",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "clearLine",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "phaseStart",
+          "kind": "method",
+          "exported": false
+        },
+        {
+          "name": "phaseProgress",
+          "kind": "method",
+          "exported": false
+        },
+        {
+          "name": "phaseEnd",
+          "kind": "method",
+          "exported": false
+        },
+        {
+          "name": "info",
+          "kind": "method",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "clearline",
+        "createrunprogress",
+        "getversion",
+        "info",
+        "phaseend",
+        "phaseprogress",
+        "phasestart",
+        "printbanner",
+        "truncatepath"
+      ]
+    },
+    {
+      "relativePath": "src/vitepress.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "resolveVitePressBin",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "pushFlag",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "createVitePressArgs",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "spawnVitePress",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "ensureVitePressRuntimeDeps",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "runVitePress",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "node:child_process",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "createvitepressargs",
+        "ensurevitepressruntimedeps",
+        "pushflag",
+        "resolvevitepressbin",
+        "runvitepress",
+        "spawnvitepress",
+        "vitepress"
+      ]
+    },
+    {
+      "relativePath": "src/watch.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [
+        {
+          "name": "shouldIgnorePath",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "runWatch",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "trigger",
+          "kind": "function",
+          "exported": false
+        },
+        {
+          "name": "schedule",
+          "kind": "function",
+          "exported": false
+        }
+      ],
+      "imports": [
+        "chokidar",
+        "node:path"
+      ],
+      "decorators": [],
+      "keywords": [
+        "runwatch",
+        "schedule",
+        "shouldignorepath",
+        "trigger",
+        "watch"
+      ]
+    },
+    {
+      "relativePath": "test/smoke.test.js",
+      "extension": ".js",
+      "language": "JavaScript",
+      "symbols": [],
+      "imports": [],
+      "decorators": [],
+      "keywords": [
+        "smoke",
+        "test"
+      ]
+    }
+  ]
+}

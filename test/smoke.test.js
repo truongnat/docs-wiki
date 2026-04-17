@@ -771,6 +771,32 @@ test('AI provider auto mode falls back to Ollama when no OpenAI key is configure
   assert.equal(resolved.model, 'llama3.2:1b');
 });
 
+test('resolveAiProvider supports anthropic, gemini, and deepseek', async () => {
+  const anthropic = await resolveAiProvider({
+    provider: 'anthropic',
+    anthropicApiKey: 'sk-ant-test',
+    anthropicModel: 'claude-3-5-sonnet-latest'
+  });
+  assert.equal(anthropic.provider, 'anthropic');
+  assert.equal(anthropic.model, 'claude-3-5-sonnet-latest');
+
+  const gemini = await resolveAiProvider({
+    provider: 'gemini',
+    geminiApiKey: 'test-gemini-key',
+    geminiModel: 'gemini-1.5-flash'
+  });
+  assert.equal(gemini.provider, 'gemini');
+  assert.equal(gemini.model, 'gemini-1.5-flash');
+
+  const deepseek = await resolveAiProvider({
+    provider: 'deepseek',
+    deepseekApiKey: 'test-deepseek-key',
+    deepseekModel: 'deepseek-chat'
+  });
+  assert.equal(deepseek.provider, 'deepseek');
+  assert.equal(deepseek.model, 'deepseek-chat');
+});
+
 test('Ollama model selection falls back to an available family variant', () => {
   assert.equal(
     pickOllamaModel('llama3.2', ['llama3.2:1b', 'qwen2.5:3b']),

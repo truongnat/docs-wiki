@@ -227,6 +227,17 @@ function resolveOptions(rootDir, cliOptions, loadedConfig) {
       reasoningEffort: aiConfig.reasoningEffort ?? process.env.DOCS_WIKI_REASONING_EFFORT ?? DEFAULT_REASONING_EFFORT,
       apiKey: cliOptions.openAIApiKey ?? process.env.OPENAI_API_KEY ?? '',
       baseURL: aiConfig.baseURL ?? process.env.OPENAI_BASE_URL ?? '',
+      
+      anthropicApiKey: cliOptions.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? '',
+      anthropicModel: cliOptions.anthropicModel ?? aiConfig.anthropicModel ?? '',
+      
+      geminiApiKey: cliOptions.geminiApiKey ?? process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
+      geminiModel: cliOptions.geminiModel ?? aiConfig.geminiModel ?? '',
+      
+      deepseekApiKey: cliOptions.deepseekApiKey ?? process.env.DEEPSEEK_API_KEY ?? '',
+      deepseekBaseURL: aiConfig.deepseekBaseURL ?? process.env.DEEPSEEK_BASE_URL ?? '',
+      deepseekModel: cliOptions.deepseekModel ?? aiConfig.deepseekModel ?? '',
+
       ollamaBaseURL: aiConfig.ollamaBaseURL ?? DEFAULT_OLLAMA_BASE_URL,
       ollamaModel: aiConfig.ollamaModel ?? DEFAULT_OLLAMA_MODEL,
       ollamaModelStrategy: cliOptions.ollamaModelStrategy ?? aiConfig.ollamaModelStrategy ?? process.env.OLLAMA_MODEL_STRATEGY ?? DEFAULT_OLLAMA_MODEL_STRATEGY,

@@ -2,7 +2,10 @@ const OpenAI = require('openai');
 const { zodTextFormat } = require('openai/helpers/zod');
 const { z } = require('zod');
 
-const DEFAULT_AI_MODEL = 'gpt-5.4-mini';
+const DEFAULT_AI_MODEL = 'gpt-4o-mini';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-sonnet-latest';
+const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 const DEFAULT_REASONING_EFFORT = 'none';
 const DEFAULT_OLLAMA_MODEL_STRATEGY = 'family';
 const DEFAULT_FILE_SYSTEM_PROMPT = 'You generate compact technical documentation for source files. Be precise, concise, and avoid speculation.';
@@ -358,8 +361,26 @@ async function resolveAiProvider(options, dependencies = {}) {
   if (dependencies.resolvedProvider) {
     return dependencies.resolvedProvider;
   }
-  if (options.provider === 'openai') {
+
+  const provider = options.provider === 'auto' ? 'openai' : options.provider;
+
+  if (provider === 'openai') {
     if (!options.apiKey) {
+      // Try Ollama fallback if auto
+      if (options.provider === 'auto') {
+        const ollamaModels = await fetchOllamaModels(options.ollamaBaseURL, fetchImpl);
+        if (ollamaModels.length > 0) {
+          return {
+            provider: 'ollama',
+            client: createClient({
+              apiKey: options.ollamaApiKey || 'ollama',
+              baseURL: options.ollamaBaseURL,
+            }),
+            model: pickOllamaModel(options.ollamaModel, ollamaModels, options.ollamaModelStrategy),
+            availableModels: ollamaModels,
+          };
+        }
+      }
       throw new Error('OpenAI provider requires OPENAI_API_KEY or --openai-api-key.');
     }
 
@@ -373,10 +394,42 @@ async function resolveAiProvider(options, dependencies = {}) {
     };
   }
 
-  const ollamaModels = await fetchOllamaModels(options.ollamaBaseURL, fetchImpl);
-  const ollamaAvailable = ollamaModels.length > 0;
-  if (options.provider === 'ollama' || (!options.apiKey && ollamaAvailable)) {
-    if (!ollamaAvailable) {
+  if (provider === 'anthropic') {
+    const apiKey = options.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('Anthropic provider requires ANTHROPIC_API_KEY.');
+    return {
+      provider: 'anthropic',
+      client: createAnthropicClient(apiKey, fetchImpl),
+      model: options.anthropicModel || DEFAULT_ANTHROPIC_MODEL,
+    };
+  }
+
+  if (provider === 'gemini') {
+    const apiKey = options.geminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!apiKey) throw new Error('Gemini provider requires GEMINI_API_KEY.');
+    return {
+      provider: 'gemini',
+      client: createGeminiClient(apiKey, fetchImpl),
+      model: options.geminiModel || DEFAULT_GEMINI_MODEL,
+    };
+  }
+
+  if (provider === 'deepseek') {
+    const apiKey = options.deepseekApiKey || process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error('DeepSeek provider requires DEEPSEEK_API_KEY.');
+    return {
+      provider: 'deepseek',
+      client: createClient({
+        apiKey,
+        baseURL: options.deepseekBaseURL || 'https://api.deepseek.com',
+      }),
+      model: options.deepseekModel || DEFAULT_DEEPSEEK_MODEL,
+    };
+  }
+
+  if (provider === 'ollama') {
+    const ollamaModels = await fetchOllamaModels(options.ollamaBaseURL, fetchImpl);
+    if (ollamaModels.length === 0) {
       throw new Error(`Ollama provider is not reachable at ${options.ollamaBaseURL}.`);
     }
 
@@ -391,18 +444,100 @@ async function resolveAiProvider(options, dependencies = {}) {
     };
   }
 
-  if (options.apiKey) {
-    return {
-      provider: 'openai',
-      client: createClient({
-        apiKey: options.apiKey,
-        baseURL: options.baseURL,
-      }),
-      model: options.model,
-    };
-  }
+  throw new Error(`Unsupported AI provider: ${provider}`);
+}
 
-  throw new Error('AI summaries require either a reachable local Ollama server or OPENAI_API_KEY.');
+function createAnthropicClient(apiKey, fetchImpl) {
+  return {
+    chat: {
+      completions: {
+        create: async ({ model, messages, response_format }) => {
+          const system = messages.find(m => m.role === 'system')?.content || '';
+          const userMessages = messages.filter(m => m.role !== 'system');
+          
+          const body = {
+            model,
+            max_tokens: 4096,
+            system,
+            messages: userMessages.map(m => ({
+              role: m.role === 'assistant' ? 'assistant' : 'user',
+              content: m.content
+            })),
+          };
+
+          const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify(body)
+          });
+
+          if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Anthropic API error: ${response.status} ${err}`);
+          }
+
+          const data = await response.json();
+          return {
+            choices: [{
+              message: {
+                content: data.content[0].text
+              }
+            }]
+          };
+        }
+      }
+    }
+  };
+}
+
+function createGeminiClient(apiKey, fetchImpl) {
+  return {
+    chat: {
+      completions: {
+        create: async ({ model, messages, response_format }) => {
+          const systemInstruction = messages.find(m => m.role === 'system')?.content;
+          const userMessages = messages.filter(m => m.role !== 'system');
+          
+          const body = {
+            contents: userMessages.map(m => ({
+              role: m.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: m.content }]
+            })),
+            generationConfig: {
+              responseMimeType: response_format?.type === 'json_object' ? 'application/json' : 'text/plain',
+            }
+          };
+          
+          if (systemInstruction) {
+            body.systemInstruction = { parts: [{ text: systemInstruction }] };
+          }
+
+          const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+
+          if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Gemini API error: ${response.status} ${err}`);
+          }
+
+          const data = await response.json();
+          const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          return {
+            choices: [{
+              message: { content }
+            }]
+          };
+        }
+      }
+    }
+  };
 }
 
 function extractJsonPayload(content) {
@@ -821,7 +956,7 @@ async function summarizeFile(client, file, options, providerInfo) {
     options.locale,
   );
 
-  if (providerInfo.provider === 'ollama') {
+  if (providerInfo.provider !== 'openai') {
     const response = await client.chat.completions.create({
       model: providerInfo.model,
       response_format: { type: 'json_object' },
@@ -869,7 +1004,7 @@ async function summarizeModule(client, module, files, options, providerInfo) {
     options.locale,
   );
 
-  if (providerInfo.provider === 'ollama') {
+  if (providerInfo.provider !== 'openai') {
     const response = await client.chat.completions.create({
       model: providerInfo.model,
       response_format: { type: 'json_object' },
@@ -924,7 +1059,7 @@ async function summarizeFeature(client, feature, scanResult, options, providerIn
     options.locale,
   );
 
-  if (providerInfo.provider === 'ollama') {
+  if (providerInfo.provider !== 'openai') {
     const response = await client.chat.completions.create({
       model: providerInfo.model,
       response_format: { type: 'json_object' },
@@ -989,7 +1124,7 @@ async function summarizeProject(client, scanResult, options, providerInfo) {
     options.locale,
   );
 
-  if (providerInfo.provider === 'ollama') {
+  if (providerInfo.provider !== 'openai') {
     const response = await client.chat.completions.create({
       model: providerInfo.model,
       response_format: { type: 'json_object' },
@@ -1051,6 +1186,13 @@ async function enrichWithAi(scanResult, rawOptions = {}) {
     provider: rawOptions.provider || 'auto',
     apiKey: rawOptions.apiKey || process.env.OPENAI_API_KEY || '',
     baseURL: rawOptions.baseURL || process.env.OPENAI_BASE_URL || '',
+    anthropicApiKey: rawOptions.anthropicApiKey || '',
+    anthropicModel: rawOptions.anthropicModel || '',
+    geminiApiKey: rawOptions.geminiApiKey || '',
+    geminiModel: rawOptions.geminiModel || '',
+    deepseekApiKey: rawOptions.deepseekApiKey || '',
+    deepseekBaseURL: rawOptions.deepseekBaseURL || '',
+    deepseekModel: rawOptions.deepseekModel || '',
     model: rawOptions.model || process.env.DOCS_WIKI_OPENAI_MODEL || DEFAULT_AI_MODEL,
     ollamaBaseURL: rawOptions.ollamaBaseURL || process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
     ollamaModel: rawOptions.ollamaModel || process.env.OLLAMA_MODEL || 'llama3.2',
@@ -1299,6 +1441,13 @@ async function enrichFeaturesWithAi(scanResult, rawOptions = {}) {
     provider: rawOptions.provider || 'auto',
     apiKey: rawOptions.apiKey || process.env.OPENAI_API_KEY || '',
     baseURL: rawOptions.baseURL || process.env.OPENAI_BASE_URL || '',
+    anthropicApiKey: rawOptions.anthropicApiKey || '',
+    anthropicModel: rawOptions.anthropicModel || '',
+    geminiApiKey: rawOptions.geminiApiKey || '',
+    geminiModel: rawOptions.geminiModel || '',
+    deepseekApiKey: rawOptions.deepseekApiKey || '',
+    deepseekBaseURL: rawOptions.deepseekBaseURL || '',
+    deepseekModel: rawOptions.deepseekModel || '',
     model: rawOptions.model || process.env.DOCS_WIKI_OPENAI_MODEL || DEFAULT_AI_MODEL,
     ollamaBaseURL: rawOptions.ollamaBaseURL || process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
     ollamaModel: rawOptions.ollamaModel || process.env.OLLAMA_MODEL || 'llama3.2',

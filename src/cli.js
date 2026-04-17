@@ -53,11 +53,13 @@ Options:
   --debug-features      Print clustered feature metadata to stdout after the scan.
   --ai                  Enable AI-generated summaries.
   --no-ai               Disable AI summaries even if config enables them.
-  --ai-provider <name>  AI provider: auto, ollama, openai.
-  --ai-model <name>     OpenAI model used for summaries. Defaults to ${DEFAULT_AI_MODEL}.
-  --ollama-model-strategy <name>
-                       Ollama selection strategy: exact, family, first-available.
-  --openai-api-key <k>  API key override. Defaults to OPENAI_API_KEY.
+  --ai-provider <name>  AI provider: auto, ollama, openai, anthropic, gemini, deepseek.
+  --ai-model <name>     Model name for the selected provider.
+  --openai-api-key <k>  OpenAI API key override. Defaults to OPENAI_API_KEY.
+  --anthropic-api-key <k>
+                       Anthropic API key override. Defaults to ANTHROPIC_API_KEY.
+  --gemini-api-key <k>  Gemini API key override. Defaults to GEMINI_API_KEY.
+  --deepseek-api-key <k> DeepSeek API key override. Defaults to DEEPSEEK_API_KEY.
   --locale <en|vi>      Language for AI-generated prose (default: en). Overrides ai.locale and DOCS_WIKI_LOCALE.
   --watch               Watch the repo and rebuild on changes.
   --no-watch            Disable watch mode.
@@ -86,6 +88,12 @@ function parseArgs(argv) {
     aiModel: undefined,
     ollamaModelStrategy: undefined,
     openAIApiKey: undefined,
+    anthropicApiKey: undefined,
+    anthropicModel: undefined,
+    geminiApiKey: undefined,
+    geminiModel: undefined,
+    deepseekApiKey: undefined,
+    deepseekModel: undefined,
     locale: undefined,
     incremental: undefined,
     watch: undefined,
@@ -279,6 +287,24 @@ function parseArgs(argv) {
 
     if (current === '--openai-api-key') {
       options.openAIApiKey = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+
+    if (current === '--anthropic-api-key') {
+      options.anthropicApiKey = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+
+    if (current === '--gemini-api-key') {
+      options.geminiApiKey = argv[index + 1] || '';
+      index += 1;
+      continue;
+    }
+
+    if (current === '--deepseek-api-key') {
+      options.deepseekApiKey = argv[index + 1] || '';
       index += 1;
       continue;
     }
@@ -507,6 +533,13 @@ async function build(cliOptions, buildMeta = {}) {
     model: options.ai.model,
     apiKey: options.ai.apiKey,
     baseURL: options.ai.baseURL,
+    anthropicApiKey: options.ai.anthropicApiKey,
+    anthropicModel: options.ai.anthropicModel,
+    geminiApiKey: options.ai.geminiApiKey,
+    geminiModel: options.ai.geminiModel,
+    deepseekApiKey: options.ai.deepseekApiKey,
+    deepseekBaseURL: options.ai.deepseekBaseURL,
+    deepseekModel: options.ai.deepseekModel,
     ollamaBaseURL: options.ai.ollamaBaseURL,
     ollamaModel: options.ai.ollamaModel,
     ollamaModelStrategy: options.ai.ollamaModelStrategy,
@@ -528,6 +561,13 @@ async function build(cliOptions, buildMeta = {}) {
     model: options.ai.model,
     apiKey: options.ai.apiKey,
     baseURL: options.ai.baseURL,
+    anthropicApiKey: options.ai.anthropicApiKey,
+    anthropicModel: options.ai.anthropicModel,
+    geminiApiKey: options.ai.geminiApiKey,
+    geminiModel: options.ai.geminiModel,
+    deepseekApiKey: options.ai.deepseekApiKey,
+    deepseekBaseURL: options.ai.deepseekBaseURL,
+    deepseekModel: options.ai.deepseekModel,
     ollamaBaseURL: options.ai.ollamaBaseURL,
     ollamaModel: options.ai.ollamaModel,
     ollamaModelStrategy: options.ai.ollamaModelStrategy,
